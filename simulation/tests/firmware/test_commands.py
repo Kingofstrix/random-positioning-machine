@@ -108,6 +108,16 @@ def test_start_without_mode_uses_current(c):
 def test_mode(c):
     assert fields(handle(c, "mode clino3d"))["mode"] == "clino3d"
     assert c.mode == "clino3d"
+    # 'mode' only switches the profile; it must never spin the servos up.
+    assert c.state == STOPPED
+    assert c.tick(DT) == (None, None)
+
+
+def test_mode_while_running_keeps_running(c):
+    handle(c, "start random")
+    c.tick(DT)
+    assert fields(handle(c, "mode clino2d"))["mode"] == "clino2d"
+    assert (c.state, c.mode) == (RUNNING, "clino2d")
 
 
 def test_set_applies_value(c):
@@ -116,6 +126,85 @@ def test_set_applies_value(c):
     assert c.cfg["random"]["v_max_dps"] == 55.5
     handle(c, "set seed 12")
     assert c.cfg["seed"] == 12
+
+
+@pytest.mark.parametrize(
+    "line, reply",
+    [("set v_max 55.5", "ok v_max=55.5"), ("SET Seed 12", "ok seed=12"), ("set accel 7", "ok accel=7")],
+)
+def test_set_echoes_key_and_value(c, line, reply):
+    assert handle(c, line) == reply
+
+
+@pytest.mark.parametrize("ticks, t", [(51, "1.020"), (62, "1.240"), (76, "1.520")])
+def test_status_time_has_zero_padded_ms(c, ticks, t):
+    handle(c, "start clino2d")
+    for _ in range(ticks):
+        c.tick(DT)
+    assert fields(handle(c, "status"))["t"] == t
+
+
+def _bring_to(ctrl, state):
+    if state in (RUNNING, STOPPING):
+        handle(ctrl, "start clino3d")
+        for _ in range(50):
+            ctrl.tick(DT)
+    if state == STOPPING:
+        handle(ctrl, "stop")
+        ctrl.tick(DT)
+    if state == CAL:
+        handle(ctrl, "pulse outer 1600")
+        ctrl.tick(DT)
+    assert ctrl.state == state
+
+
+# command -> state before -> state after
+_STOP_LIKE = {
+    "stop": {STOPPED: STOPPED, RUNNING: STOPPING, STOPPING: STOPPING, CAL: STOPPED},
+    "estop": {STOPPED: STOPPED, RUNNING: STOPPED, STOPPING: STOPPED, CAL: STOPPED},
+    "pulse off": {STOPPED: STOPPED, RUNNING: RUNNING, STOPPING: STOPPING, CAL: STOPPED},
+}
+
+
+@pytest.mark.parametrize("start_state", [STOPPED, RUNNING, STOPPING, CAL])
+@pytest.mark.parametrize("line", sorted(_STOP_LIKE))
+def test_stop_like_commands_report_real_state(c, line, start_state):
+    _bring_to(c, start_state)
+    before = snapshot(c)
+    reply = handle(c, line)
+    expected = _STOP_LIKE[line][start_state]
+    assert c.state == expected
+    assert fields(reply)["state"] == expected
+    if expected == start_state:
+        # A no-op must not touch anything, e.g. 'pulse off' must not stop a running machine.
+        assert snapshot(c) == before
+
+
+@pytest.mark.parametrize(
+    "setup, lines, pulses",
+    [
+        (["start clino3d"], ["estop"], ("off", "off")),
+        ([], ["pulse inner 1600"], ("1600", "off")),
+        ([], ["pulse inner 1600", "pulse outer 1400"], ("1600", "1400")),
+        (["pulse inner 1600"], ["pulse outer 1400"], ("1600", "1400")),
+        (["pulse outer 1600"], ["pulse off"], ("off", "off")),
+        (["pulse outer 1600"], ["stop"], ("off", "off")),
+        (["pulse outer 1600"], ["estop"], ("off", "off")),
+    ],
+)
+def test_status_pulses_follow_state_without_tick(c, setup, lines, pulses):
+    # On the Pico several buffered lines run between two ticks (PLAN 5.7), so status must not
+    # report pulses that the new state no longer sends.
+    for line in setup:
+        handle(c, line)
+    for _ in range(100):
+        c.tick(DT)
+    for line in lines:
+        assert handle(c, line).startswith("ok ")
+    f = fields(handle(c, "status"))
+    assert (f["inner_us"], f["outer_us"]) == pulses
+    s = c.status()
+    assert (s["inner_us"], s["outer_us"]) == c.tick(0.0)
 
 
 def test_pulse_and_pulse_off(c):
@@ -193,6 +282,52 @@ def test_err_messages_are_single_line(c):
     for line in ("fly", "set v_max abc", "pulse outer 5000", "start warp"):
         reply = handle(c, line)
         assert "\n" not in reply and "\r" not in reply
+
+
+class _Raising:
+    """Stub controller: every command method raises `exc`, like a future controller bug."""
+
+    state = STOPPED
+    mode = "random"
+
+    def __init__(self, exc):
+        self.exc = exc
+
+    def __getattr__(self, name):
+        def fail(*args):
+            raise self.exc
+
+        return fail
+
+
+_EVERY_COMMAND = [
+    ("status", []),
+    ("start", []),
+    ("start", ["clino3d"]),
+    ("stop", []),
+    ("estop", []),
+    ("mode", ["clino3d"]),
+    ("set", ["seed", "1"]),
+    ("pulse", ["inner", "1600"]),
+    ("pulse", ["off"]),
+]
+
+
+@pytest.mark.parametrize("cmd, args", _EVERY_COMMAND)
+@pytest.mark.parametrize("exc", [RuntimeError("boom\nline2"), KeyError("k"), TypeError("t\r\nu")])
+def test_non_value_errors_become_err_internal(cmd, args, exc):
+    # On the Pico an escaping exception would end the main loop and leave the PWM as it was.
+    reply = execute(_Raising(exc), cmd, args)
+    assert reply.startswith("err internal ")
+    assert "\n" not in reply and "\r" not in reply
+
+
+def test_err_internal_keeps_message_on_one_line():
+    assert execute(_Raising(RuntimeError("boom\nline2")), "stop", []) == "err internal boom line2"
+
+
+def test_value_error_message_is_flattened_to_one_line():
+    assert execute(_Raising(ValueError("bad\r\nvalue")), "stop", []) == "err bad  value"
 
 
 # --- robustness ----------------------------------------------------------------------------
