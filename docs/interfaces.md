@@ -43,6 +43,16 @@ Servo PWM: 50 Hz, pulse 700…2300 µs, 1500 µs = stop, > 1500 µs = CCW.
 Defined in `docs/PLAN.md` section 5.6. Replies start with `ok` or `err`. The same protocol runs on
 the Pico and in the simulation viewer.
 
-The web interface (`interface/`) sends `start`, `stop`, `estop` and `status` (every 0.5 s) and reads
-`state`, `inner_dps`, `outer_dps`, `inner_us`, `outer_us` and `t` (seconds) from the `status` reply.
-Changing that reply format breaks the interface; tag the Testing team.
+The control page (`interface/`, run through its launcher) talks to the Arduino Nano (CH340, 115200
+baud). It sends `start`, `stop`, `estop` and `status` (every 0.5 s) and reads `state`, `t` (seconds),
+`outer_dps`, `inner_dps`, `gres` and `cov` from the `status` reply. Unknown keys are ignored.
+Changing that reply format breaks the page; tag the Testing team.
+
+Example: `ok state=RUNNING mode=random inner_dps=-21.00 outer_dps=32.00 inner_us=1441 outer_us=1590 t=12.345 gres=0.412 cov=0.370`
+
+The `status` reply also carries `gres` and `cov` (3 decimals each). `gres` is the magnitude in g of
+the time-averaged gravity vector in the platform frame since `start`. `cov` is the share (0..1) of
+200 equal-area orientation bins visited since `start`. The Arduino estimates both from the
+commanded, ramped speeds, as there is no sensor. `start` resets them to `gres=1.000 cov=0.000`. The
+spec, reference code and test values are in `testing/gravity-estimate/`. Changing these fields
+affects Testing (control page) and the author of the Arduino sketch.

@@ -7,6 +7,7 @@ Test path for the Random Positioning Machine. Owner: Testing team.
 | `run_tests.py` | Interactive test runner |
 | `steps/<topic>.yaml` | Test steps per topic |
 | `results/` | One Markdown report per test run |
+| `gravity-estimate/` | Spec, reference code and test values for the Arduino's `gres`/`cov` status fields |
 
 ## Setup
 Python 3.9 or newer and PyYAML:

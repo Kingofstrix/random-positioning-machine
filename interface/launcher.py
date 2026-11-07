@@ -1,0 +1,312 @@
+"""Laptop-side launcher for the RPM minimal UI.
+
+Browsers cannot open a serial port without Web Serial (Chrome only, and only over https or
+localhost), so this small bridge owns the Arduino's USB-serial port and hands it to the page
+over plain HTTP on 127.0.0.1:
+
+    GET  /        -> index.html next to this script
+    GET  /events  -> Server-Sent Events: `port` (connection state) and `line` (raw serial lines)
+    POST /cmd     -> one command line, written to serial with "\\n" (503 without a port)
+
+Only the standard library and pyserial are used so the start scripts stay trivial.
+"""
+
+import argparse
+import json
+import os
+import queue
+import shutil
+import subprocess
+import sys
+import threading
+import time
+import webbrowser
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+CH340_VID = 0x1A86
+DEFAULT_BAUD = 115200
+DEFAULT_HTTP_PORT = 8765
+HOST = "127.0.0.1"
+KEEPALIVE_S = 15.0
+RETRY_S = 1.0
+# Opening the port toggles DTR, which resets an Arduino Nano. The bootloader then runs for
+# about 1-2 s and swallows anything we send, so we wait before reporting "connected".
+RESET_WAIT_S = 2.0
+INDEX_HTML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
+
+
+def list_ports():
+    """Return pyserial's port list; imported lazily so tests run without pyserial."""
+    from serial.tools import list_ports as lp
+    return list(lp.comports())
+
+
+def open_serial(device, baud):
+    import serial
+    return serial.Serial(device, baud, timeout=0.2)
+
+
+def find_port(ports, override=None):
+    """Pick the Arduino: explicit override, else a CH340, else the only port there is."""
+    if override:
+        return override
+    for p in ports:
+        if getattr(p, "vid", None) == CH340_VID:
+            return p.device
+    if len(ports) == 1:
+        return ports[0].device
+    return None
+
+
+class Bridge:
+    """Owns the serial port and fans its lines out to every SSE client.
+
+    Serial opener, port lister and sleep are injectable so the tests run without hardware.
+    """
+
+    def __init__(self, baud=DEFAULT_BAUD, port_override=None, opener=open_serial,
+                 lister=list_ports, reset_wait=RESET_WAIT_S, retry=RETRY_S, sleep=time.sleep):
+        self.baud = baud
+        self.port_override = port_override
+        self.opener = opener
+        self.lister = lister
+        self.reset_wait = reset_wait
+        self.retry = retry
+        self.sleep = sleep
+        self.serial = None
+        self.device = None
+        self.clients = []
+        self.lock = threading.Lock()
+        self.write_lock = threading.Lock()
+        self.stop_event = threading.Event()
+
+    # --- SSE fan-out -------------------------------------------------------------------
+    def subscribe(self):
+        q = queue.Queue()
+        with self.lock:
+            self.clients.append(q)
+            # A new page must learn the current state right away, not on the next change.
+            q.put(("port", self.port_payload()))
+        return q
+
+    def unsubscribe(self, q):
+        with self.lock:
+            if q in self.clients:
+                self.clients.remove(q)
+
+    def broadcast(self, event, data):
+        with self.lock:
+            for q in self.clients:
+                q.put((event, data))
+
+    def port_payload(self):
+        return json.dumps({"connected": self.serial is not None, "port": self.device})
+
+    # --- serial ------------------------------------------------------------------------
+    def write(self, line):
+        """Send one command; returns False when no port is open."""
+        ser = self.serial
+        if ser is None:
+            return False
+        try:
+            with self.write_lock:
+                ser.write((line.strip() + "\n").encode("utf-8"))
+            return True
+        except Exception:
+            self._drop()
+            return False
+
+    def _drop(self):
+        ser, self.serial, self.device = self.serial, None, None
+        if ser is not None:
+            try:
+                ser.close()
+            except Exception:
+                pass
+            self.broadcast("port", self.port_payload())
+
+    def try_connect(self):
+        """One attempt to find and open the port; True on success."""
+        try:
+            device = find_port(self.lister(), self.port_override)
+        except Exception:
+            device = None
+        if device is None:
+            return False
+        try:
+            ser = self.opener(device, self.baud)
+        except Exception:
+            return False
+        self.sleep(self.reset_wait)  # Nano reset via DTR, see RESET_WAIT_S
+        try:
+            ser.reset_input_buffer()  # drop bootloader noise
+        except Exception:
+            pass
+        self.serial, self.device = ser, device
+        self.broadcast("port", self.port_payload())
+        return True
+
+    def read_once(self):
+        """Read one line (or time out) and broadcast it; drops the port on I/O errors."""
+        try:
+            raw = self.serial.readline()
+        except Exception:
+            self._drop()
+            return
+        if raw:
+            line = raw.decode("utf-8", errors="replace").rstrip("\r\n")
+            self.broadcast("line", line)
+
+    def run(self):
+        """Background loop: connect, read, and reconnect every second after unplugging."""
+        while not self.stop_event.is_set():
+            if self.serial is None:
+                if not self.try_connect():
+                    self.stop_event.wait(self.retry)
+                continue
+            self.read_once()
+
+    def start(self):
+        t = threading.Thread(target=self.run, name="serial", daemon=True)
+        t.start()
+        return t
+
+    def stop(self):
+        self.stop_event.set()
+        self._drop()
+
+
+def make_handler(bridge, index_path=INDEX_HTML, keepalive=KEEPALIVE_S):
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, fmt, *args):
+            pass  # the page polls every 500 ms; logging that would drown the terminal
+
+        def _send(self, code, body, ctype="text/plain; charset=utf-8"):
+            data = body.encode("utf-8") if isinstance(body, str) else body
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_GET(self):
+            path = self.path.split("?", 1)[0]
+            if path in ("/", "/index.html"):
+                try:
+                    with open(index_path, "rb") as f:
+                        self._send(200, f.read(), "text/html; charset=utf-8")
+                except OSError:
+                    self._send(404, "index.html not found")
+            elif path == "/events":
+                self._events()
+            else:
+                self._send(404, "not found")
+
+        def do_POST(self):
+            if self.path.split("?", 1)[0] != "/cmd":
+                self._send(404, "not found")
+                return
+            length = int(self.headers.get("Content-Length") or 0)
+            line = self.rfile.read(length).decode("utf-8", errors="replace")
+            if bridge.write(line):
+                self._send(200, "ok")
+            else:
+                self._send(503, "no serial port")
+
+        def _events(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.close_connection = True
+            q = bridge.subscribe()
+            try:
+                while not bridge.stop_event.is_set():
+                    try:
+                        event, data = q.get(timeout=keepalive)
+                        msg = "event: %s\ndata: %s\n\n" % (event, data)
+                    except queue.Empty:
+                        msg = ": keepalive\n\n"  # keeps proxies/browsers from timing out
+                    self.wfile.write(msg.encode("utf-8"))
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass
+            finally:
+                bridge.unsubscribe(q)
+
+    return Handler
+
+
+def make_server(bridge, http_port=DEFAULT_HTTP_PORT, index_path=INDEX_HTML):
+    """Bind to 127.0.0.1 only; fall back to a free port if the default is taken."""
+    handler = make_handler(bridge, index_path)
+    try:
+        server = ThreadingHTTPServer((HOST, http_port), handler)
+    except OSError:
+        server = ThreadingHTTPServer((HOST, 0), handler)
+    server.daemon_threads = True
+    return server
+
+
+def open_app_window(url):
+    """Prefer a chromeless Chrome/Edge window (feels like an app); else the default browser."""
+    arg = "--app=" + url
+    candidates = []
+    if sys.platform == "darwin":
+        for app in ("Google Chrome", "Microsoft Edge", "Chromium"):
+            if os.path.isdir("/Applications/%s.app" % app):
+                candidates.append(["open", "-na", app, "--args", arg])
+    elif sys.platform.startswith("win"):
+        roots = [os.environ.get(k, "") for k in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA")]
+        rels = [r"Google\Chrome\Application\chrome.exe", r"Microsoft\Edge\Application\msedge.exe"]
+        for rel in rels:
+            for root in roots:
+                exe = os.path.join(root, rel)
+                if root and os.path.isfile(exe):
+                    candidates.append([exe, arg])
+    else:
+        for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser",
+                     "microsoft-edge"):
+            exe = shutil.which(name)
+            if exe:
+                candidates.append([exe, arg])
+    for cmd in candidates:
+        try:
+            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return
+        except OSError:
+            continue
+    webbrowser.open(url)
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="Serve the RPM UI and bridge it to the Arduino.")
+    ap.add_argument("--port", help="serial port (default: auto-detect CH340)")
+    ap.add_argument("--baud", type=int, default=DEFAULT_BAUD)
+    ap.add_argument("--http-port", type=int, default=DEFAULT_HTTP_PORT)
+    ap.add_argument("--no-browser", action="store_true", help="do not open a browser window")
+    args = ap.parse_args(argv)
+
+    bridge = Bridge(baud=args.baud, port_override=args.port)
+    server = make_server(bridge, args.http_port)
+    url = "http://%s:%d/" % (HOST, server.server_address[1])
+    bridge.start()
+    print("RPM UI at %s  (Ctrl+C to quit)" % url, flush=True)
+    if not args.no_browser:
+        open_app_window(url)
+    try:
+        server.serve_forever(poll_interval=0.5)
+    except KeyboardInterrupt:
+        print("\nbye")
+    finally:
+        bridge.stop()
+        server.server_close()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
