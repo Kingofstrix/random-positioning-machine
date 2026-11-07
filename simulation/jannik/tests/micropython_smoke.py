@@ -37,3 +37,20 @@ for name in sorted(STRATEGIES):
     print("ok", name, f"residual(est) {residual:.4f} g")
 
 print("micropython smoke test passed")
+
+# Firmware loop against the fake machine module (tests/fake_pico/machine.py):
+# MICROPYPATH=.:firmware:tests/fake_pico
+try:
+    import machine
+    import main as firmware
+except ImportError:
+    firmware = None
+if firmware is not None:
+    firmware.run(max_ticks=20)
+    import config
+
+    outer_writes = machine.writes[config.OUTER_PIN]
+    assert len(outer_writes) == 20 + 2  # 20 ticks, then stop pulse and off
+    assert all(700_000 <= ns <= 2_300_000 for ns in outer_writes[:-1])
+    assert outer_writes[-1] == 0
+    print("firmware loop passed")
