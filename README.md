@@ -27,9 +27,10 @@ Axes, units and wiring shared between the teams: [`docs/interfaces.md`](docs/int
 | `hardware/` | CAD, wiring, BOM *(not created yet)* | Hardware |
 | `simulation/` | Pico firmware (`firmware/`), MuJoCo simulation (`sim/`), pytest suite (`tests/`) | Simulation |
 | `testing/` | Interactive test runner, test steps per topic, test reports | Testing |
+| `interface/` | Web interface for experimenters, deployed to [GitHub Pages](https://kingofstrix.github.io/random-positioning-machine/) | Testing |
 | `docs/` | Project plan (`PLAN.md`), team interfaces (`interfaces.md`) | Everyone |
 | `CLAUDE.md` | Rules for AI agents working on the firmware and simulation | Everyone |
-| `.github/` | PR template, branch ruleset | – |
+| `.github/` | PR template, branch ruleset, Pages deploy workflow | – |
 
 ## Hardware
 

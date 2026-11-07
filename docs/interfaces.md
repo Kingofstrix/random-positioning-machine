@@ -42,3 +42,7 @@ Servo PWM: 50 Hz, pulse 700…2300 µs, 1500 µs = stop, > 1500 µs = CCW.
 
 Defined in `docs/PLAN.md` section 5.6. Replies start with `ok` or `err`. The same protocol runs on
 the Pico and in the simulation viewer.
+
+The web interface (`interface/`) sends `start`, `stop`, `estop` and `status` (every 0.5 s) and reads
+`state`, `inner_dps`, `outer_dps`, `inner_us`, `outer_us` and `t` (seconds) from the `status` reply.
+Changing that reply format breaks the interface; tag the Testing team.
