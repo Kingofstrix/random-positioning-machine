@@ -272,6 +272,12 @@ dl.kv dd{margin:0}
           <button class="btn" id="btnSend" type="submit">Send</button>
         </form>
         <p class="hint">Commands and replies as in the simulation team's firmware code (rpmcore, branch sim/chore/version-bqckf1sh). Baud rate not decided yet.</p>
+        <div class="row fwd">
+          <label class="hint"><input type="checkbox" id="fwdOn"> Forward to simulation</label>
+          <input id="fwdUrl" type="text" spellcheck="false" value="ws://localhost:8765" aria-label="Simulation address" style="width:180px">
+          <span class="hint" id="fwdText" role="status" aria-live="polite">off</span>
+        </div>
+        <p class="hint">Sends a copy of every machine message to <code>python -m sim.hil</code> on this computer, which runs the 3D simulation with the machine's real motor signals and checks the firmware against the simulation team's logic. Needs the Nano's telemetry build (simulation/arduino/README.md).</p>
       </section>
     </div>
   </main>
@@ -629,14 +635,63 @@ dl.kv dd{margin:0}
     if (isPoll) polls++;
     if (!isPoll || $("showPolls").checked) logLine("> " + line, "tx");
     link.send(line);
+    fwdSend("tx", line);
   }
+
+  /* ---------- forwarding to the laptop simulation (sim.hil) ---------- */
+  // Only traffic of a real machine is forwarded: the preview machine is not the Nano firmware.
+  // The page keeps the serial port; sim.hil gets a copy over a local WebSocket.
+  var fwd = { ws: null, retry: 0, rx: 0, telemetry: 0 };
+  function fwdText(t) { $("fwdText").textContent = t; }
+  function fwdSend(dir, line) {
+    if (!link || link.kind !== "serial" || !fwd.ws || fwd.ws.readyState !== 1) return;
+    fwd.ws.send(JSON.stringify({ dir: dir, line: line }));
+    if (dir === "rx") fwd.rx++;
+  }
+  function fwdConnect() {
+    clearTimeout(fwd.retry);
+    if (!$("fwdOn").checked) return;
+    var ws;
+    try { ws = new WebSocket($("fwdUrl").value.trim()); } catch (e) { fwdText("bad address"); return; }
+    fwd.ws = ws;
+    fwdText("connecting…");
+    ws.onopen = function () { fwdText("connected to the simulation"); };
+    ws.onclose = function () {
+      if (fwd.ws !== ws) return;
+      fwd.ws = null;
+      if (!$("fwdOn").checked) { fwdText("off"); return; }
+      fwdText("not reachable: start python -m sim.hil, retrying…");
+      fwd.retry = setTimeout(fwdConnect, 3000);
+    };
+  }
+  function fwdStop() { clearTimeout(fwd.retry); var ws = fwd.ws; fwd.ws = null; if (ws) ws.close(); fwdText("off"); }
+  $("fwdOn").addEventListener("change", function () {
+    try { localStorage.setItem("rpm-hub-fwd", $("fwdOn").checked ? "1" : "0"); } catch (e) { }
+    if ($("fwdOn").checked) fwdConnect(); else fwdStop();
+  });
+  $("fwdUrl").addEventListener("change", function () {
+    try { localStorage.setItem("rpm-hub-fwd-url", $("fwdUrl").value.trim()); } catch (e) { }
+    if ($("fwdOn").checked) { fwdStop(); $("fwdOn").checked = true; fwdConnect(); }
+  });
+  try {
+    var savedUrl = localStorage.getItem("rpm-hub-fwd-url"); if (savedUrl) $("fwdUrl").value = savedUrl;
+    if (localStorage.getItem("rpm-hub-fwd") === "1") { $("fwdOn").checked = true; fwdConnect(); }
+  } catch (e) { }
   function parseStatus(line) {
     if (line.indexOf("state=") < 0) return null;
     var o = {}; line.replace(/^ok\s+/i, "").split(/\s+/).forEach(function (kv) { var i = kv.indexOf("="); if (i > 0) o[kv.slice(0, i)] = kv.slice(i + 1); });
     return o;
   }
   function onLine(line) {
-    line = line.replace(/\r$/, "").trim(); if (!line) return;
+    line = line.replace(/\r$/, "");
+    fwdSend("rx", line);
+    line = line.trim(); if (!line) return;
+    // Telemetry build of the Nano: "T ..." per tick, "C ..." per processed command. Only for
+    // sim.hil; the page neither shows nor parses them (50 lines per second).
+    if (/^(T |C |C!$)/.test(line)) { fwd.telemetry++; return; }
+    if (/^ok rpm_nano ready/.test(line) && $("fwdOn").checked && !/telemetry$/.test(line)) {
+      logLine("This Nano runs the normal firmware. To check it in the simulation, flash the telemetry build.", "err");
+    }
     var st = parseStatus(line), isPoll = !!st && polls > 0 && /^ok\s+state=\w+\s+mode=\w+\s+inner_dps=/.test(line);
     if (isPoll) polls--;
     if (!isPoll || $("showPolls").checked) logLine("< " + line, /^err/i.test(line) ? "err" : "");

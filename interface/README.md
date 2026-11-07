@@ -72,10 +72,36 @@ From the `status` reply it reads `state` (`RUNNING`, `STOPPING`, `STOPPED`), `in
 `outer_dps`, `inner_us`, `outer_us` and `t` (seconds). If the firmware changes this format, the
 page has to change too.
 
+## Forward to the simulation (hardware in the loop)
+
+Expert mode → *Machine messages* → **Forward to simulation** sends a copy of every line the page
+sends to the machine and every line it receives to `python -m sim.hil` on the same computer
+(default `ws://localhost:8765`). The page keeps the serial port. Only a real machine is
+forwarded, not the preview.
+
+`sim.hil` then runs the 3D simulation with the machine's real motor signals and checks the Nano
+firmware against the simulation team's logic (rpmcore). At the end it writes a report for the
+simulation team. Details and how to flash the needed **telemetry build**:
+`simulation/arduino/README.md` (on the branch `sim/feat/arduino-nano-firmware` until merged).
+
+1. Flash the telemetry build onto the Nano.
+2. On the laptop: `cd simulation && python -m sim.hil`.
+3. On the page: expert mode on, tick *Forward to simulation* (the status says *connected to the
+   simulation*), then **Connect machine**. Connecting resets the Nano, so the check starts at its boot.
+4. Use the page as usual. End with Ctrl-C in the terminal: the report is in `simulation/results/`.
+
+The telemetry build also sends a line per tick (`T …`) and per command (`C …`). The page forwards
+them but does not show them. If the Nano runs the normal firmware while forwarding is on, the
+page says so in the machine messages.
+
+If the browser blocks the connection from the GitHub Pages address to `localhost` (some Chrome
+versions ask for permission to access devices on the local network: allow it), open the page
+locally instead: `cd interface && python3 -m http.server 8000`, then http://localhost:8000.
+
 ## Not decided yet
 
-- **Baud rate.** The page defaults to 115200 and lets experts pick another. It must match the Nano firmware.
-- **Nano firmware.** The Arduino Nano script that answers these commands is not written yet.
+- **Baud rate.** The page defaults to 115200, the Nano firmware uses 115200.
+- **Nano firmware.** Written (`simulation/arduino/`, branch `sim/feat/arduino-nano-firmware`), not merged yet.
 - **Moon and Mars gravity.** Shown as "later"; needs a motion strategy from the simulation team.
 - **Measurements.** No sensors yet. Columns will be added once the teams decide what to measure.
 - **Build details** on the tab *The machine* stay "Not decided yet" until the hardware team fills them in.
