@@ -1,37 +1,47 @@
-# Software topic: Pico firmware and PC simulation.
+# Software topic: Pico firmware logic (simulation/firmware) and the MuJoCo simulation (simulation/sim).
 # Owner: Simulation team. Fields: id, title, do, expect (type defaults to manual).
+#
+# All commands run in simulation/ with the venv active (see simulation/README.md).
+# Pure logic (PRNG, servo map, config) is covered by pytest in SW-02; the manual steps cover
+# what pytest cannot: setup, interfaces, the real Pico and what you see in the simulation.
+# Steps marked "Skip until M<n>" need a milestone from docs/PLAN.md section 9 that is not merged yet.
 steps:
   - id: SW-01
-    title: Firmware builds
-    do: Build the firmware from a clean checkout as described in simulation/README.md.
-    expect: Build finishes without errors and without new warnings.
+    title: Setup from a clean checkout
+    do: In simulation/ run `python3 -m venv .venv`, `. .venv/bin/activate` and `pip install -e ".[dev]"`.
+    expect: Install finishes without errors (installs mujoco, numpy, matplotlib, pytest).
 
   - id: SW-02
-    title: Firmware flashes and boots
-    do: Flash the firmware to the Raspberry Pi Pico and open the serial monitor.
-    expect: Pico boots and prints its startup message with the firmware version.
+    title: Fast test suite
+    do: Run `pytest -m "not slow"`.
+    expect: All tests pass, including test_micropython_compat, in under 30 s. No test is skipped or marked xfail.
 
   - id: SW-03
-    title: Each axis responds
-    do: Command axis 1 and then axis 2 to move in both directions.
-    expect: Only the commanded axis moves, in the commanded direction.
+    title: Firmware config matches the interfaces
+    do: Compare simulation/firmware/rpmcore/config.py with docs/interfaces.md.
+    expect: Pins outer = 15 (GP15), inner = 16 (GP16); tick 20 ms (50 Hz PWM); both servos neutral 1500 µs, limits 700 to 2300 µs.
 
   - id: SW-04
-    title: Stop command
-    do: While both axes move, send the stop command.
-    expect: Both axes stop within one second and stay stopped.
+    title: Self-test on the real Pico
+    do: Connect the Pico with MicroPython installed, run `mpremote cp -r firmware/rpmcore :`, `mpremote cp firmware/main.py :` and `mpremote run tools/pico_selftest.py`.
+    expect: Self-test reports success (PRNG seed 1 sequence, servo map points, 500 controller ticks). Skip until M2.
 
   - id: SW-05
-    title: Random motion changes over time
-    do: Start random-motion mode and watch the serial log for 30 seconds.
-    expect: Speeds and directions of both axes change repeatedly and do not follow an obvious repeating pattern.
+    title: Serial commands
+    do: Open the Pico's serial console and send `status`, `start random`, `status`, `stop`, `status`, `estop`, `foo`.
+    expect: Every reply starts with `ok`, except `foo` which gives `err`. status shows state RUNNING after start, STOPPING then STOPPED after stop. Skip until M2.
 
   - id: SW-06
-    title: Simulation runs
-    do: Start the PC simulation as described in simulation/README.md.
-    expect: Simulation starts without errors and shows the platform orientation changing over time.
+    title: Simulation run
+    do: Run `python -m sim.run --mode random --minutes 1 --seed 1 --out results/`.
+    expect: Finishes without errors and writes results/random_s1.npz and results/summary.json. Skip until M5.
 
   - id: SW-07
-    title: Simulation and firmware agree
-    do: Compare the algorithm parameters and units used by the simulation and the firmware with docs/interfaces.md.
-    expect: Both use the same parameters, units and coordinate frames as documented.
+    title: Viewer
+    do: Run `python -m sim.viewer --mode random`, watch for 30 seconds, then type `stop` in the terminal.
+    expect: Machine looks like the real one (gears mesh, servos in place), both frames turn, gravity arrows are drawn at the sample. After `stop` both frames ramp down and stand still. Skip until M6.
+
+  - id: SW-08
+    title: Report plots
+    do: Run `python -m sim.report results/` on the output of SW-06 and open the plots.
+    expect: Plots are created. Residual g falls over time, commanded and actual speeds follow each other. Skip until M6.
