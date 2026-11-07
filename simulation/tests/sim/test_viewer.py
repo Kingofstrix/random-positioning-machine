@@ -369,3 +369,59 @@ def test_main_exits_on_quit(monkeypatch, capsys):
     v = run_main(monkeypatch, "status\nquit\n", frames=10_000, argv=[])
     assert v.closed and v.syncs < 10_000
     assert "ok state=" in capsys.readouterr().out
+
+
+# --- Time lapse --------------------------------------------------------------------------
+
+from sim.viewer import MAX_SPEED  # noqa: E402
+
+
+def make_speed(speed=1.0):
+    return LiveSession(P, CONFIG, "clino2d", 1, clock=FakeClock(), speed=speed)
+
+
+def test_speed_multiplies_sim_time_per_wall_second():
+    s1, s4 = make_speed(1.0), make_speed(4.0)
+    n1 = sum(s1.advance(FRAME_S) for _ in range(60))
+    n4 = sum(s4.advance(FRAME_S) for _ in range(60))
+    assert n1 == pytest.approx(50, abs=1)
+    assert n4 == pytest.approx(200, abs=1)
+    assert s4.machine.data.time == pytest.approx(4.0, abs=0.03)
+
+
+def test_catchup_cap_scales_with_speed():
+    s = make_speed(4.0)
+    assert s.advance(10.0) == 4 * MAX_CATCHUP_TICKS
+
+
+def test_fractional_speed_slows_down():
+    s = make_speed(0.5)
+    assert sum(s.advance(FRAME_S) for _ in range(60)) == pytest.approx(25, abs=1)
+
+
+@pytest.mark.parametrize("bad", [0, -1, MAX_SPEED * 2, float("nan"), float("inf"), "abc"])
+def test_invalid_speed_rejected(bad):
+    s = make_speed(2.0)
+    with pytest.raises(ValueError):
+        s.set_speed(bad)
+    assert s.speed == 2.0
+
+
+def test_speed_command_in_terminal():
+    s = make_speed()
+    out = []
+    command_loop(s, io.StringIO("speed 10\nspeed\nSPEED  2.5 \nspeed fast\nspeed 0\n"), out.append, threading.Event())
+    assert out[0] == "ok speed=10"
+    assert out[1] == "ok speed=10"
+    assert out[2] == "ok speed=2.5"
+    assert out[3].startswith("err ") and out[4].startswith("err ")
+    assert s.speed == 2.5
+
+
+def test_status_line_shows_speed():
+    assert "speed=3x" in make_speed(3.0).status_line()
+
+
+def test_cli_speed_option():
+    assert parse_args(["--speed", "8"]).speed == 8.0
+    assert parse_args([]).speed == 1.0

@@ -1,6 +1,6 @@
 """Interactive MuJoCo viewer with the live controller (docs/PLAN.md 6.7).
 
-python -m sim.viewer --mode random --seed 1
+python -m sim.viewer --mode random --seed 1 --speed 10
 
 Commands typed in the terminal go through `rpmcore.commands.handle`, the same protocol as on
 the Pico's USB serial; `quit` closes the viewer. Two arrows are drawn at the sample: the current
@@ -12,6 +12,7 @@ All logic lives in `LiveSession` and the helper functions, so it is tested witho
 
 import argparse
 import copy
+import math
 import sys
 import threading
 import time
@@ -43,6 +44,11 @@ STATUS_EVERY_S = 3.0
 # far more than one 60 Hz frame needs.
 MAX_CATCHUP_TICKS = 10
 
+# Time lapse: sim seconds per wall second. Headless the sim reaches about 60x real time on a
+# laptop; above ~50x the window would fall behind anyway, so faster requests are refused.
+MAX_SPEED = 50.0
+SPEED_WORD = "speed"   # handled by the viewer itself, not part of the device protocol
+
 QUIT_WORDS = ("quit", "exit")
 
 # Wall time is kept in integer nanoseconds so leftover fractions of a tick never round away.
@@ -60,8 +66,11 @@ class Arrow:
 class LiveSession:
     """Controller + simulated machine paced by wall time; safe to command from another thread."""
 
-    def __init__(self, params: MachineParams, cfg: dict, mode: str, seed: int, clock=time.monotonic):
+    def __init__(self, params: MachineParams, cfg: dict, mode: str, seed: int, clock=time.monotonic,
+                 speed: float = 1.0):
         self.params = params
+        self.speed = 1.0
+        self.set_speed(speed)
         cfg = copy.deepcopy(cfg)
         cfg["seed"] = seed
         self.controller = Controller(cfg)
@@ -83,6 +92,16 @@ class LiveSession:
         with self._lock:
             return commands.handle(self.controller, line)
 
+    def set_speed(self, value) -> None:
+        """Time-lapse factor; raises ValueError and keeps the old value if out of range."""
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            raise ValueError("speed must be a number") from None
+        if not (math.isfinite(v) and 0 < v <= MAX_SPEED):
+            raise ValueError("speed must be in (0, %g]" % MAX_SPEED)
+        self.speed = v
+
     def poll(self) -> int:
         """Advance by the wall time since the last poll; returns the ticks run."""
         now = self._clock()
@@ -91,10 +110,12 @@ class LiveSession:
 
     def advance(self, wall_dt: float) -> int:
         """Run the control ticks that `wall_dt` seconds of real time are worth (capped)."""
-        self._backlog_ns += max(0, int(round(wall_dt * _NS_PER_S)))
+        self._backlog_ns += max(0, int(round(wall_dt * self.speed * _NS_PER_S)))
         n = self._backlog_ns // self._tick_ns
-        if n > MAX_CATCHUP_TICKS:
-            n = MAX_CATCHUP_TICKS
+        # The cap scales with the speed, or it would silently limit the time lapse itself.
+        cap = math.ceil(MAX_CATCHUP_TICKS * self.speed)
+        if n > cap:
+            n = cap
             self._backlog_ns = 0
         else:
             self._backlog_ns -= n * self._tick_ns
@@ -133,8 +154,9 @@ class LiveSession:
     def status_line(self) -> str:
         with self._lock:
             s = self.controller.status()
-        return "state=%s mode=%s inner_dps=%.1f outer_dps=%.1f t=%.1f s residual_g=%.3f" % (
-            s["state"], s["mode"], s["inner_dps"], s["outer_dps"], self.machine.data.time, self.residual_g())
+        return "state=%s mode=%s inner_dps=%.1f outer_dps=%.1f t=%.1f s residual_g=%.3f speed=%gx" % (
+            s["state"], s["mode"], s["inner_dps"], s["outer_dps"], self.machine.data.time, self.residual_g(),
+            self.speed)
 
 
 def draw_arrows(scn: mujoco.MjvScene, arrows: list[Arrow]) -> None:
@@ -154,18 +176,35 @@ def draw_arrows(scn: mujoco.MjvScene, arrows: list[Arrow]) -> None:
 def command_loop(session: LiveSession, lines, write, stop: threading.Event) -> None:
     """Feed terminal lines to the session until `quit` (sets `stop`) or end of input."""
     for line in lines:
-        if line.strip().lower() in QUIT_WORDS:
+        words = line.strip().lower().split()
+        if words and words[0] in QUIT_WORDS:
             stop.set()
             return
-        reply = session.submit(line)
+        if words and words[0] == SPEED_WORD:
+            reply = _speed_command(session, words[1:])
+        else:
+            reply = session.submit(line)
         if reply:
             write(reply)
+
+
+def _speed_command(session: LiveSession, args: list[str]) -> str:
+    if len(args) > 1:
+        return "err usage: speed [factor]"
+    if args:
+        try:
+            session.set_speed(args[0])
+        except ValueError as e:
+            return "err %s" % e
+    return "ok speed=%g" % session.speed
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--mode", default=CONFIG["default_mode"], choices=["random", "clino3d", "clino2d"])
     ap.add_argument("--seed", type=int, default=CONFIG["seed"])
+    ap.add_argument("--speed", type=float, default=1.0,
+                    help="time lapse, sim seconds per wall second (also 'speed <x>' while running)")
     return ap.parse_args(argv)
 
 
@@ -173,11 +212,11 @@ def main(argv: list[str] | None = None) -> None:
     import mujoco.viewer  # only here: needs a display, tests import this module without one
 
     a = parse_args(argv)
-    session = LiveSession(MachineParams(), CONFIG, a.mode, a.seed)
+    session = LiveSession(MachineParams(), CONFIG, a.mode, a.seed, speed=a.speed)
     stop = threading.Event()
     reader = threading.Thread(
         target=command_loop, args=(session, sys.stdin, lambda s: print(s, flush=True), stop), daemon=True)
-    print("type commands (help, start, stop, estop, ...), 'quit' to exit", flush=True)
+    print("type commands (help, start, stop, estop, ..., speed <x>), 'quit' to exit", flush=True)
     print(session.status_line(), flush=True)
     m, d = session.machine.model, session.machine.data
     with mujoco.viewer.launch_passive(m, d) as v:
