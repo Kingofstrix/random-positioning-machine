@@ -46,7 +46,10 @@ def simulate(mode: str, minutes: float, seed: int, params: MachineParams | None 
     ctrl.start(mode)
     machine = SimMachine(p)
     n_ticks = int(round(minutes * 60.0 / p.control_dt))
+    # Logging keeps every n-th control tick, so only control_rate / n is possible. meta stores
+    # that real rate, because the windowed metrics size their windows from it.
     every = max(1, int(round(1.0 / (log_hz * p.control_dt))))
+    actual_hz = 1.0 / (every * p.control_dt)
     rows = []
     for i in range(n_ticks):
         inner_us, outer_us = ctrl.tick(p.control_dt)
@@ -62,7 +65,7 @@ def simulate(mode: str, minutes: float, seed: int, params: MachineParams | None 
         t=a[:, 0], q_outer=a[:, 1], q_inner=a[:, 2],
         w_dps=np.degrees(a[:, 3:5]), cmd_dps=a[:, 5:7], pulses=a[:, 7:9].astype(int),
         g_sample=a[:, 9:12], acc_sample=a[:, 12:15],
-        meta={"mode": mode, "minutes": minutes, "seed": seed, "log_hz": log_hz,
+        meta={"mode": mode, "minutes": minutes, "seed": seed, "log_hz": actual_hz,
               "params": {k: v for k, v in p.__dict__.items()}},
     )
 

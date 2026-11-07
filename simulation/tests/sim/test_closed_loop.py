@@ -46,6 +46,18 @@ def test_sign_and_logging_per_axis(axis, other):
     assert np.degrees(q[axis][-1] - q[axis][0]) == pytest.approx(turned_deg, rel=0.05)
 
 
+@pytest.mark.parametrize("log_hz, actual_hz", [(50.0, 50.0), (30.0, 25.0), (100.0, 50.0)])
+def test_meta_log_hz_is_the_rate_actually_logged(log_hz, actual_hz):
+    # Logging can only decimate the 50 Hz control rate, so 30 Hz becomes 25 Hz and 100 Hz
+    # 50 Hz. summarize() sizes its windows from meta["log_hz"], so it must be the real rate.
+    minutes = 0.05
+    log = simulate("clino2d", minutes=minutes, seed=1, log_hz=log_hz)
+    hz = log.meta["log_hz"]
+    assert hz == pytest.approx(actual_hz)
+    assert np.allclose(np.diff(log.t), 1.0 / hz)
+    assert len(log.t) == round(minutes * 60.0 * hz)
+
+
 def test_only_inner_axis_keeps_full_gravity():
     # Inner axis is vertical when outer = 0, so spinning it cannot average gravity away.
     cfg = copy.deepcopy(CONFIG)
