@@ -17,6 +17,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest"]
 video = ["imageio[ffmpeg]"]
+# Arduino Nano firmware build/upload; the AVR toolchain lands in simulation/.platformio.
+nano = ["platformio"]
 
 [tool.setuptools]
 # rpmcore lives in firmware/ because that folder is copied 1:1 onto the Pico.

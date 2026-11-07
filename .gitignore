@@ -8,3 +8,9 @@ dist/
 
 # Simulation output (npz logs, plots, videos)
 simulation/results/
+
+# PlatformIO toolchain and firmware build output (fetched per machine, see simulation/firmware_nano)
+simulation/.platformio/
+simulation/firmware_nano/.pio/
+# Claude Code agent worktrees
+.claude/
