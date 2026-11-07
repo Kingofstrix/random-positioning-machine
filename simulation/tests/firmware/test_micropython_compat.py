@@ -130,4 +130,5 @@ def test_expected_modules_are_checked():
     names = {p.name for p in rpmcore_files()}
     assert {
         "__init__.py", "config.py", "prng.py", "servo_map.py", "motion.py", "controller.py",
+        "commands.py",
     } <= names
