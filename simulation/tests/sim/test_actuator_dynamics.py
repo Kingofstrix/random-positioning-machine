@@ -113,6 +113,30 @@ def test_gyro_norm_with_both_axes_turning(m):
     assert np.linalg.norm(s["gyro"]) == pytest.approx(math.hypot(s["w_outer"], s["w_inner"]), rel=1e-3)
 
 
+def test_offset_payload_feels_its_own_acceleration():
+    # PLAN 6.1/8.3: with the sample off the axis intersection, acc + g is the sample's own
+    # linear acceleration (centripetal + Euler terms) in the sample frame. Compare it with the
+    # second difference of the site position over three physics steps.
+    p = MachineParams(payload_offset=(0.0, 0.0, 0.010))
+    m = SimMachine(p)
+    mdl, d = m.model, m.data
+    m.step(1700, 1800, duration=1.0)
+    xs, acc, rot = [], [], []
+    for _ in range(3):
+        s = m.state()
+        pos, R = m.sample_pose()
+        xs.append(pos)
+        acc.append(s["acc_sample"] + s["g_sample"])
+        rot.append(R)
+        mujoco.mj_step(mdl, d)
+    a_fd = rot[1].T @ (xs[2] - 2 * xs[1] + xs[0]) / mdl.opt.timestep ** 2
+    s = m.state()
+    # Order of magnitude r * omega^2: the sensor really sits off the axes.
+    r = np.linalg.norm(p.payload_offset)
+    assert np.linalg.norm(acc[1]) > 0.5 * r * (s["w_outer"] ** 2 + s["w_inner"] ** 2)
+    assert np.allclose(acc[1], a_fd, rtol=0.02, atol=2e-3 * np.linalg.norm(a_fd))
+
+
 def test_gravity_in_sample_frame_at_rest(m):
     # The sample frame is the platform's STL frame, where +Y is up at q = 0.
     s = m.state()

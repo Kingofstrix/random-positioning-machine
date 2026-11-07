@@ -55,6 +55,33 @@ def test_sample_site_at_axis_intersection(md):
     assert np.linalg.norm(np.cross(site - p_i, d.xaxis[m.joint("inner").id])) < 1e-6
 
 
+OFFSET = (0.004, -0.003, 0.010)   # m, platform STL frame
+
+
+def posed(params, q_outer, q_inner):
+    m = mujoco.MjModel.from_xml_string(build_mjcf(params))
+    d = mujoco.MjData(m)
+    for name, q in (("outer", q_outer), ("inner", q_inner)):
+        d.qpos[m.jnt_qposadr[m.joint(name).id]] = q
+        d.qpos[m.jnt_qposadr[m.joint(name + "_pinion").id]] = -params.gear_ratio * q
+    mujoco.mj_forward(m, d)
+    return m, d
+
+
+def test_payload_and_site_follow_offset_on_platform():
+    # PLAN 6.1: site 'sample' = axis intersection + payload_offset, given in the platform's STL
+    # frame, and the payload sits there on the platform. Checked at a tilted pose so that a
+    # mirrored offset or an offset applied in the wrong frame cannot pass.
+    p = MachineParams(payload_offset=OFFSET)
+    m, d = posed(p, 0.7, -1.1)
+    centre = d.xanchor[m.joint("inner").id]          # the axes intersect here
+    R = d.xmat[m.body("platform").id].reshape(3, 3)
+    want = centre + R @ np.array(OFFSET)
+    assert np.allclose(d.site("sample").xpos, want, atol=1e-6)
+    assert np.allclose(d.geom("payload").xpos, want, atol=1e-6)
+    assert m.geom_bodyid[m.geom("payload").id] == m.body("platform").id
+
+
 def test_rotating_mass(md):
     m, _ = md
     mass = m.body_subtreemass[m.body("inner_frame").id]
