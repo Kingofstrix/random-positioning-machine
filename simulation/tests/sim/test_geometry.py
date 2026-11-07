@@ -150,6 +150,36 @@ def test_outer_gear_on_inner_frame_stub_against_outer_frame(model, d0):
     assert teeth[1] < bar[:, 0].min()                     # teeth clear of the inner frame bar
 
 
+# --- inner pair: gear on the platform's angled +Y shaft end, end cap on the -Y end -------------
+
+
+def test_inner_gear_on_angled_shaft_end(model, d0):
+    """Guide step 1: the gear goes on the platform's angled square end, against the frame."""
+    inf, plat = verts(model, d0, "inner_frame"), verts(model, d0, "platform")
+    gear = verts(model, d0, "gear_large_inner")
+    face = inf[(inf[:, 1] > 0) & (radius(inf, 1) < NEAR_AXIS)][:, 1].max()
+    shaft_end = plat[:, 1].max()
+    assert gear[:, 1].min() == pytest.approx(face, abs=TOL)
+    assert gear[:, 1].max() == pytest.approx(shaft_end, abs=TOL)
+
+
+def test_inner_gear_bore_turned_onto_the_diamond(model, d0):
+    """The shaft end is a square turned 45 deg; the gear's square bore must be turned the same."""
+    plat = verts(model, d0, "platform")
+    gear = verts(model, d0, "gear_large_inner")
+    end = plat[:, 1].max()
+
+    def l1(v):
+        return np.abs(v[:, 0] - AXIS[0]) + np.abs(v[:, 2] - AXIS[2])
+
+    diamond = plat[(plat[:, 1] > end - 1.0) & (radius(plat, 1) < 4)]
+    bore = gear[(gear[:, 1] > end - 1.0) & (radius(gear, 1) < 4)]
+    assert len(bore) >= 4
+    # Axis-aligned, the bore corners would reach |x| + |z| = 3.65 mm, past the 2.5 mm diamond.
+    assert l1(bore).max() <= l1(diamond).max() + TOL
+    assert l1(bore).min() >= l1(diamond).max() - TOL
+
+
 # --- gear meshing -------------------------------------------------------------------------------
 
 PAIRS = [

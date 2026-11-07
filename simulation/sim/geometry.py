@@ -32,7 +32,10 @@ PINION_OFFSET = math.sqrt(GEAR_CENTER_DIST**2 - (SERVO_SHAFT_Z - AXIS_POINT[2]) 
 # Outer gear (guide step 3): on the inner frame's square -X stub, between the two frames. Its
 # collar (STL x -2.5..0) bears on the outer frame's inner face, its disc (0..3) holds the stub.
 OUTER_GEAR_X = -(OUTER_FRAME_INNER_X - 2.5)
-INNER_GEAR_Y = INNER_FRAME_Y + 4.5          # gear spans x -4..3 in its STL, turned onto Y
+# Inner gear (guide step 1): collar (STL x -4..0) on the inner frame's +Y face, disc (0..3) on the
+# platform's angled shaft end, a square turned 45 deg. The gear's square bore is turned to match.
+INNER_GEAR_Y = INNER_FRAME_Y + 4.0
+SHAFT_END_TURN = 45.0       # deg
 OUTER_PINION_X = OUTER_GEAR_X - 2.3         # pinion spans x 0..5 in its STL
 INNER_PINION_Y = INNER_GEAR_Y - 2.5
 
@@ -52,7 +55,7 @@ PARTS = {
     "inner_frame": ("02_inner_frame.stl", "inner_frame", (0, 0, 0), (0, 0, 0)),
     "gear_large_outer": ("04_spur_gear_large_outer.stl", "inner_frame", (OUTER_GEAR_X, 0, AXIS_POINT[2]), (0, 0, 0)),
     "platform": ("03_experiment_platform.stl", "platform", (0, 0, 0), (0, 0, 0)),
-    "gear_large_inner": ("05_spur_gear_large_inner.stl", "platform", (0, INNER_GEAR_Y, AXIS_POINT[2]), (0, 0, 90)),
+    "gear_large_inner": ("05_spur_gear_large_inner.stl", "platform", (0, INNER_GEAR_Y, AXIS_POINT[2]), (0, SHAFT_END_TURN, 90)),
     "end_cap": ("07_end_cap.stl", "platform", (0, -63.5, AXIS_POINT[2]), (90, 0, 0)),
 }
 
