@@ -1,13 +1,14 @@
 """Closed loop: the rpmcore controller drives the simulated machine (docs/PLAN.md 6.5).
 
 python -m sim.run --mode random --minutes 30 --seed 1 --out results/
+python -m sim.run --mode random --minutes 10 --seed 1 --payload-offset-mm 0 0 10   # PLAN 8.3
 """
 
 import argparse
 import copy
 import json
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -16,6 +17,7 @@ import sim  # noqa: F401  (puts firmware/ on sys.path)
 from rpmcore.config import CONFIG
 from rpmcore.controller import Controller
 from sim.machine import SimMachine
+from sim.mjcf import MM
 from sim.metrics import extra_accel, residual_g, speed_tracking, sphere_coverage, windowed_residual
 from sim.params import MachineParams
 
@@ -46,7 +48,10 @@ def simulate(mode: str, minutes: float, seed: int, params: MachineParams | None 
     ctrl.start(mode)
     machine = SimMachine(p)
     n_ticks = int(round(minutes * 60.0 / p.control_dt))
+    # Logging keeps every n-th control tick, so only control_rate / n is possible. meta stores
+    # that real rate, because the windowed metrics size their windows from it.
     every = max(1, int(round(1.0 / (log_hz * p.control_dt))))
+    actual_hz = 1.0 / (every * p.control_dt)
     rows = []
     for i in range(n_ticks):
         inner_us, outer_us = ctrl.tick(p.control_dt)
@@ -62,7 +67,7 @@ def simulate(mode: str, minutes: float, seed: int, params: MachineParams | None 
         t=a[:, 0], q_outer=a[:, 1], q_inner=a[:, 2],
         w_dps=np.degrees(a[:, 3:5]), cmd_dps=a[:, 5:7], pulses=a[:, 7:9].astype(int),
         g_sample=a[:, 9:12], acc_sample=a[:, 12:15],
-        meta={"mode": mode, "minutes": minutes, "seed": seed, "log_hz": log_hz,
+        meta={"mode": mode, "minutes": minutes, "seed": seed, "log_hz": actual_hz,
               "params": {k: v for k, v in p.__dict__.items()}},
     )
 
@@ -73,6 +78,9 @@ def summarize(log: SimLog) -> dict:
     mx, rms = extra_accel(log.acc_sample, log.g_sample)
     out = {
         "residual_g": residual_g(log.g_sample),
+        # PLAN A11: the accelerometer mean next to the exact gravity metric. It also holds
+        # extra accelerations that do not average out, e.g. centripetal ones of an offset sample.
+        "residual_acc_g": residual_g(log.acc_sample),
         "coverage": frac,
         "coverage_nonuniformity": nonuni,
         "extra_accel_max_g": mx,
@@ -86,16 +94,33 @@ def summarize(log: SimLog) -> dict:
     return out
 
 
+def result_name(mode: str, seed: int, payload_offset_mm=(0.0, 0.0, 0.0)) -> str:
+    """<mode>_s<seed>, plus the payload offset when it is not zero.
+
+    A run with a different machine gets its own .npz and summary entry, so it can never
+    replace the standard run of the same mode and seed.
+    """
+    name = "%s_s%d" % (mode, seed)
+    if any(payload_offset_mm):
+        name += "_off%smm" % "_".join("%g" % v for v in payload_offset_mm)
+    return name
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--mode", default="random", choices=["random", "clino3d", "clino2d"])
     ap.add_argument("--minutes", type=float, default=30.0)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", type=Path, default=Path("results"))
+    ap.add_argument("--payload-offset-mm", type=float, nargs=3, default=(0.0, 0.0, 0.0),
+                    metavar=("X", "Y", "Z"),
+                    help="sample position from the axis intersection in mm, STL frame")
     a = ap.parse_args(argv)
     a.out.mkdir(parents=True, exist_ok=True)
-    log = simulate(a.mode, a.minutes, a.seed)
-    name = "%s_s%d" % (a.mode, a.seed)
+    params = replace(MachineParams(),
+                     payload_offset=tuple(v * MM for v in a.payload_offset_mm))
+    log = simulate(a.mode, a.minutes, a.seed, params=params)
+    name = result_name(a.mode, a.seed, a.payload_offset_mm)
     log.save(a.out / (name + ".npz"))
     summary_path = a.out / "summary.json"
     summary = json.loads(summary_path.read_text()) if summary_path.exists() else {}

@@ -30,6 +30,10 @@ class MachineParams:
     # Time constant of MuJoCo's soft dry friction. The default (0.02 s) lets a held frame creep;
     # the FS90R gearbox barely back-drives, so friction is made stiff (>= 2 timesteps).
     friction_solref: float = 0.002
+    # Even stiff soft friction lets a tilted frame creep ~2.4 deg/min under gravity with PWM off.
+    # MuJoCo's noslip post-solver turns joint dry friction into a hard constraint, so frictionloss
+    # really holds the frame at standstill (PLAN 6.2). 0 switches it off.
+    noslip_iterations: int = 10
 
     payload_mass: float = 0.015               # 50 mm Petri dish with medium [Annahme]
     payload_radius: float = 0.025
