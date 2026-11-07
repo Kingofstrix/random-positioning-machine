@@ -24,6 +24,28 @@ def test_signs(mode):
     assert log.q_outer[-1] > 0.3 and log.q_inner[-1] > 0.3
 
 
+COL = {"inner": 0, "outer": 1}  # column order of SimLog.w_dps, cmd_dps and pulses
+
+
+@pytest.mark.parametrize("axis, other", [("outer", "inner"), ("inner", "outer")])
+def test_sign_and_logging_per_axis(axis, other):
+    # PLAN 8.3: a positive setpoint on one axis turns that axis forward, and only that one.
+    # Driving one axis at a time also pins every logged column to its axis.
+    cfg = copy.deepcopy(CONFIG)
+    cfg["clino3d"] = {axis + "_dps": 30.0, other + "_dps": 0.0}
+    log = simulate("clino3d", minutes=0.05, seed=1, cfg=cfg)
+    q = {"outer": log.q_outer, "inner": log.q_inner}
+    a, o = COL[axis], COL[other]
+    assert q[axis][-1] > 0.5 and abs(q[other][-1]) < 0.01
+    neutral = CONFIG["servo"][other]["neutral_us"]
+    assert (log.pulses[:, o] == neutral).all() and (log.pulses[-1, a] != neutral)
+    assert log.cmd_dps[-1, a] == pytest.approx(30.0) and (log.cmd_dps[:, o] == 0).all()
+    assert log.w_dps[-1, a] > 20.0 and abs(log.w_dps[-1, o]) < 1.0
+    # q is in rad and w in deg/s: the angle is the integral of the logged speed.
+    turned_deg = np.trapezoid(log.w_dps[:, a], log.t)
+    assert np.degrees(q[axis][-1] - q[axis][0]) == pytest.approx(turned_deg, rel=0.05)
+
+
 def test_only_inner_axis_keeps_full_gravity():
     # Inner axis is vertical when outer = 0, so spinning it cannot average gravity away.
     cfg = copy.deepcopy(CONFIG)
