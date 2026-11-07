@@ -27,6 +27,9 @@ CONFIG = {
     "seed": 1,
     "accel_dps2": 20.0,
     "random": {"v_min_dps": 10.0, "v_max_dps": 60.0, "hold_min_s": 5.0, "hold_max_s": 20.0},
+    # Accepted range for `set hold_min/hold_max`. Holds that round to 0 ms would hang the
+    # random profile, huge ones overflow the int-ms conversion on the Pico's float32.
+    "limits": {"hold_s": (0.1, 3600.0)},
     # 30 / 18.54 is close to the golden ratio, so the two rotations never phase-lock.
     "clino3d": {"outer_dps": 30.0, "inner_dps": 18.54},
     "clino2d": {"outer_dps": 30.0},
