@@ -9,6 +9,9 @@ dependencies = [
     "matplotlib>=3.9",
 ]
 
+[project.scripts]
+rpm-sim = "rpm.sim.cli:main"
+
 [dependency-groups]
 dev = [
     "pytest>=8.3",
@@ -30,6 +33,10 @@ markers = ["slow: long simulation runs (acceptance criteria)"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.format]
+# Code blocks in docs/*.md keep their aligned comments for readability.
+exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "NPY"]
