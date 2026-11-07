@@ -126,6 +126,18 @@ def test_summary_keys_and_windows_follow_meta():
     assert "residual_g_600s" not in out
 
 
+def test_summary_reports_accelerometer_mean():
+    # PLAN A11: the time-averaged accelerometer reading next to the exact gravity metric.
+    # A constant extra acceleration (e.g. a centripetal bias) shows up only there.
+    log = synthetic_log()
+    bias = np.array([0.0, 0.3 * G0, 0.0])
+    log.acc_sample = -log.g_sample + bias
+    out = summarize(log)
+    expected = np.linalg.norm(np.mean(-log.g_sample, axis=0) + bias) / G0
+    assert out["residual_acc_g"] == pytest.approx(expected)
+    assert out["residual_acc_g"] != pytest.approx(out["residual_g"], abs=0.1)
+
+
 def test_cli_keeps_earlier_runs_in_summary(tmp_path):
     main(["--mode", "clino2d", "--minutes", "0.02", "--seed", "1", "--out", str(tmp_path)])
     main(["--mode", "clino3d", "--minutes", "0.02", "--seed", "1", "--out", str(tmp_path)])

@@ -76,6 +76,9 @@ def summarize(log: SimLog) -> dict:
     mx, rms = extra_accel(log.acc_sample, log.g_sample)
     out = {
         "residual_g": residual_g(log.g_sample),
+        # PLAN A11: the accelerometer mean next to the exact gravity metric. It also holds
+        # extra accelerations that do not average out, e.g. centripetal ones of an offset sample.
+        "residual_acc_g": residual_g(log.acc_sample),
         "coverage": frac,
         "coverage_nonuniformity": nonuni,
         "extra_accel_max_g": mx,
