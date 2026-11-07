@@ -93,6 +93,26 @@ def test_positive_pulse_turns_positive(m):
     assert s["q_outer"] > 0 and s["q_inner"] > 0
 
 
+def test_gyro_at_rest_reads_zero(m):
+    assert np.allclose(m.state()["gyro"], 0, atol=1e-9)
+
+
+@pytest.mark.parametrize("inner_us, outer_us", [(1500, 1850), (1850, 1500), (1150, 1500)])
+def test_gyro_reads_single_axis_rate(m, inner_us, outer_us):
+    # PLAN A10. The sample frame is the platform's STL frame: the outer axis is its X (which the
+    # inner rotation about Y moves only when q_inner != 0), the inner axis is its Y.
+    m.step(inner_us, outer_us, duration=0.5)
+    s = m.state()
+    assert s["w_outer"] ** 2 + s["w_inner"] ** 2 > 1.0   # really turning
+    assert np.allclose(s["gyro"], [s["w_outer"], s["w_inner"], 0.0], atol=1e-3)
+
+
+def test_gyro_norm_with_both_axes_turning(m):
+    m.step(1800, 1700, duration=1.0)
+    s = m.state()
+    assert np.linalg.norm(s["gyro"]) == pytest.approx(math.hypot(s["w_outer"], s["w_inner"]), rel=1e-3)
+
+
 def test_gravity_in_sample_frame_at_rest(m):
     # The sample frame is the platform's STL frame, where +Y is up at q = 0.
     s = m.state()
