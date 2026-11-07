@@ -264,6 +264,36 @@ def test_gear_teeth_do_not_interpenetrate(model, gear, pinion, axis, frame, q):
     assert both.sum() * RASTER**2 <= MAX_TOOTH_OVERLAP
 
 
+# --- stands -------------------------------------------------------------------------------------
+
+
+def hole_centres(v, guesses, window=3.0):
+    """Centres of round holes along X near `guesses` (y, z), by a least-squares circle fit."""
+    out = []
+    for c in guesses:
+        for _ in range(3):
+            q = v[np.hypot(v[:, 1] - c[0], v[:, 2] - c[1]) < window][:, 1:]
+            A = np.c_[2 * q, np.ones(len(q))]
+            sol = np.linalg.lstsq(A, (q**2).sum(1), rcond=None)[0]
+            c, r = sol[:2], np.sqrt(sol[2] + sol[:2] @ sol[:2])
+            window = r + 0.3
+        assert np.abs(np.hypot(q[:, 0] - c[0], q[:, 1] - c[1]) - r).max() < 0.05   # a clean circle
+        out.append(c)
+    return np.array(out)
+
+
+@pytest.mark.parametrize("stand, side", [("stand_right", 1), ("stand_left", -1)])
+def test_stand_holes_line_up_with_frame_holes(model, d0, stand, side):
+    """Guide step 5: each stand is bolted to the outer frame through two holes (M3x6)."""
+    of, st = verts(model, d0, "outer_frame"), verts(model, d0, stand)
+    frame_face = (side * of[:, 0]).max()
+    assert (side * st[:, 0]).min() == pytest.approx(frame_face, abs=TOL)   # flat on the frame
+    # Rough hole positions between both parts; the fit then finds the real centres in each.
+    guess = [(-74.4, AXIS[2]), (-49.4, AXIS[2])]
+    frame_bar = of[side * of[:, 0] > frame_face - 5]
+    np.testing.assert_allclose(hole_centres(st, guess), hole_centres(frame_bar, guess), atol=0.1)
+
+
 # --- servos -------------------------------------------------------------------------------------
 
 SERVOS = [
