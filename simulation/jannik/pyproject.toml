@@ -1,7 +1,7 @@
 [project]
 name = "rpm-jannik"
 version = "0.1.0"
-description = "RPM motion logic, Pico firmware and simulation (Jannik's implementation)"
+description = "RPM motion logic, Arduino Nano firmware and simulation (Jannik's implementation)"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -11,6 +11,7 @@ dependencies = [
 
 [project.scripts]
 rpm-sim = "rpm.sim.cli:main"
+rpm-nano-calibrate = "rpm.nano.calibrate:main"
 
 [dependency-groups]
 dev = [
@@ -18,6 +19,7 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
 ]
+nano = ["pyserial>=3.5"]  # only for rpm-nano-calibrate, which talks to the Nano
 
 [build-system]
 requires = ["hatchling"]
