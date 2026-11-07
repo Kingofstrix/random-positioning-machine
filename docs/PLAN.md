@@ -227,6 +227,7 @@ CONFIG = {
     "seed": 1,
     "accel_dps2": 20.0,          # Rampe für Rahmen-Drehzahl [Annahme]
     "random": {"v_min_dps": 10.0, "v_max_dps": 60.0, "hold_min_s": 5.0, "hold_max_s": 20.0},
+    "limits": {"hold_s": (0.1, 3600.0)},   # erlaubter Bereich für `set hold_min/hold_max`
     "clino3d": {"outer_dps": 30.0, "inner_dps": 18.54},   # Verhältnis ≈ Goldener Schnitt
     "clino2d": {"outer_dps": 30.0},
     "servo": {
@@ -280,7 +281,8 @@ c.start(mode=None)        # STOPPED → RUNNING, Rampe ab aktueller Drehzahl
 c.stop()                  # RUNNING → STOPPING
 c.estop()                 # sofort STOPPED, Pulse = None (PWM aus)
 c.set_mode(name)          # wechselt Profil, Rampe sorgt für weichen Übergang
-c.set_param(key, value)   # v_min, v_max, accel, hold_min, hold_max, seed (validiert)
+c.set_param(key, value)   # v_min, v_max, accel, hold_min, hold_max, seed (validiert;
+                          # Haltezeiten in CONFIG["limits"]["hold_s"], sonst hängt/überläuft tick())
 c.cal_pulse(axis, us)     # nur aus STOPPED/CAL, setzt Rohpuls
 inner_us, outer_us = c.tick(dt)   # None = PWM aus
 c.status() -> dict        # state, mode, Ist-Setpoints °/s, Pulse, Laufzeit (int-ms)
