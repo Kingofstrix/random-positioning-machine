@@ -1,0 +1,145 @@
+import math
+
+import mujoco
+import numpy as np
+import pytest
+
+from sim.machine import SimMachine
+from sim.params import MachineParams
+from sim.servo_model import torque
+
+
+@pytest.fixture
+def m():
+    return SimMachine(MachineParams())
+
+
+def test_saturated_pulse_reaches_noload_speed(m):
+    p = m.params
+    m.step(1500, 1850, duration=0.5)
+    w = m.state()["w_outer"]
+    # Gravity torque on the balanced frame is small; friction takes a few percent.
+    assert w == pytest.approx(p.omega0 / p.gear_ratio, rel=0.05)
+
+
+# (u, omega/omega0): on the DC-motor line, and reversals where only the force clamp holds tau.
+TORQUE_POINTS = [(1.0, 0.0), (1.0, 0.5), (0.5, 0.2), (-0.7, -0.3), (0.0, 0.4),
+                 (1.0, -0.5), (1.0, -1.0), (-1.0, 1.0)]
+
+
+@pytest.mark.parametrize("axis", ["outer", "inner"])
+@pytest.mark.parametrize("u, frac", TORQUE_POINTS)
+def test_actuator_realises_servo_torque_curve(m, axis, u, frac):
+    # PLAN A6: the velocity actuator must give exactly servo_model.torque, slope kv and the
+    # +-tau_stall clamp included, at any shaft speed (not just at stall or no load).
+    p = m.params
+    mdl, d = m.model, m.data
+    omega = frac * p.omega0                       # servo shaft speed
+    d.qvel[mdl.jnt_dofadr[mdl.joint(axis).id]] = omega / p.gear_ratio
+    d.qvel[mdl.jnt_dofadr[mdl.joint(axis + "_pinion").id]] = -omega
+    d.ctrl[m._act[axis]] = u * p.omega0
+    mujoco.mj_forward(mdl, d)
+    assert d.actuator_force[m._act[axis]] == pytest.approx(torque(u, omega, p), abs=1e-6)
+    assert abs(d.actuator_force[m._act[axis]]) <= p.servo_stall_torque + 1e-9
+
+
+def test_stalled_joint_gives_stall_torque():
+    # Held by a huge inertia: MuJoCo's dry friction is soft and always lets a joint creep.
+    p = MachineParams(armature_outer=1e3)
+    m = SimMachine(p)
+    m.step(None, 1850, duration=0.2)
+    s = m.state()
+    assert abs(s["w_outer"]) < 1e-3
+    assert s["tau_outer"] == pytest.approx(p.servo_stall_torque, rel=0.02)
+
+
+def set_pose(m, q_outer=0.0, q_inner=0.0):
+    """Put both frames at an angle (rad), with the pinions where the gear equality wants them."""
+    mdl, d = m.model, m.data
+    for name, q in (("outer", q_outer), ("inner", q_inner)):
+        d.qpos[mdl.jnt_qposadr[mdl.joint(name).id]] = q
+        d.qpos[mdl.jnt_qposadr[mdl.joint(name + "_pinion").id]] = -m.params.gear_ratio * q
+    mujoco.mj_forward(mdl, d)
+
+
+@pytest.mark.parametrize("pulse", [None, 1500])
+def test_tilted_frame_holds_with_pwm_off(m, pulse):
+    # PLAN 6.2: frictionloss holds the frame at standstill. At 90 deg the gravity torque about
+    # the outer axis is largest but still below frictionloss_outer, so the frame must not creep.
+    set_pose(m, q_outer=math.pi / 2)
+    m.step(pulse, pulse, duration=60.0)
+    assert abs(math.degrees(m.state()["q_outer"]) - 90.0) < 0.1
+
+
+def test_deadband_pulse_does_not_move(m):
+    m.step(1530, 1470, duration=1.0)
+    s = m.state()
+    assert abs(s["q_outer"]) < 1e-3 and abs(s["q_inner"]) < 1e-3
+
+
+def test_pinions_turn_minus_four_times(m):
+    m.step(1850, 1850, duration=1.0)
+    s = m.state()
+    d, mdl = m.data, m.model
+    q_op = d.qpos[mdl.jnt_qposadr[mdl.joint("outer_pinion").id]]
+    q_ip = d.qpos[mdl.jnt_qposadr[mdl.joint("inner_pinion").id]]
+    assert q_op == pytest.approx(-4 * s["q_outer"], rel=0.01)
+    assert q_ip == pytest.approx(-4 * s["q_inner"], rel=0.01)
+
+
+def test_positive_pulse_turns_positive(m):
+    m.step(1700, 1700, duration=0.5)
+    s = m.state()
+    assert s["q_outer"] > 0 and s["q_inner"] > 0
+
+
+def test_gyro_at_rest_reads_zero(m):
+    assert np.allclose(m.state()["gyro"], 0, atol=1e-9)
+
+
+@pytest.mark.parametrize("inner_us, outer_us", [(1500, 1850), (1850, 1500), (1150, 1500)])
+def test_gyro_reads_single_axis_rate(m, inner_us, outer_us):
+    # PLAN A10. The sample frame is the platform's STL frame: the outer axis is its X (which the
+    # inner rotation about Y moves only when q_inner != 0), the inner axis is its Y.
+    m.step(inner_us, outer_us, duration=0.5)
+    s = m.state()
+    assert s["w_outer"] ** 2 + s["w_inner"] ** 2 > 1.0   # really turning
+    assert np.allclose(s["gyro"], [s["w_outer"], s["w_inner"], 0.0], atol=1e-3)
+
+
+def test_gyro_norm_with_both_axes_turning(m):
+    m.step(1800, 1700, duration=1.0)
+    s = m.state()
+    assert np.linalg.norm(s["gyro"]) == pytest.approx(math.hypot(s["w_outer"], s["w_inner"]), rel=1e-3)
+
+
+def test_offset_payload_feels_its_own_acceleration():
+    # PLAN 6.1/8.3: with the sample off the axis intersection, acc + g is the sample's own
+    # linear acceleration (centripetal + Euler terms) in the sample frame. Compare it with the
+    # second difference of the site position over three physics steps.
+    p = MachineParams(payload_offset=(0.0, 0.0, 0.010))
+    m = SimMachine(p)
+    mdl, d = m.model, m.data
+    m.step(1700, 1800, duration=1.0)
+    xs, acc, rot = [], [], []
+    for _ in range(3):
+        s = m.state()
+        pos, R = m.sample_pose()
+        xs.append(pos)
+        acc.append(s["acc_sample"] + s["g_sample"])
+        rot.append(R)
+        mujoco.mj_step(mdl, d)
+    a_fd = rot[1].T @ (xs[2] - 2 * xs[1] + xs[0]) / mdl.opt.timestep ** 2
+    s = m.state()
+    # Order of magnitude r * omega^2: the sensor really sits off the axes.
+    r = np.linalg.norm(p.payload_offset)
+    assert np.linalg.norm(acc[1]) > 0.5 * r * (s["w_outer"] ** 2 + s["w_inner"] ** 2)
+    assert np.allclose(acc[1], a_fd, rtol=0.02, atol=2e-3 * np.linalg.norm(a_fd))
+
+
+def test_gravity_in_sample_frame_at_rest(m):
+    # The sample frame is the platform's STL frame, where +Y is up at q = 0.
+    s = m.state()
+    assert np.allclose(s["g_sample"], [0, -9.81, 0], atol=1e-6)
+    # An accelerometer at rest reads the opposite of gravity.
+    assert np.allclose(s["acc_sample"] + s["g_sample"], 0, atol=1e-3)
