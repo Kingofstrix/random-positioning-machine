@@ -35,17 +35,32 @@ Only touch another team's folder if you tag that team in the PR.
 - At least **1 approval**, ideally from another team when interfaces are affected.
 - All review comments resolved before merging.
 - Merge with **squash merge**, then delete the branch.
-- Keep PRs small. Over ~400 changed lines (excluding binaries) usually means it should be split.
+- Keep PRs small: one feature or fix per PR.
 
 ## 6. Documentation
 - Every folder has a `README.md` explaining what is inside and how to use it.
 - Code: docstrings for public functions, comments for *why* rather than *what*.
 - Hardware changes: update the BOM and note the change in `hardware/README.md`.
 - Interfaces between teams (pins, units, data formats, coordinate frames) are documented in `docs/interfaces.md`. Changing them needs a PR approved by every affected team.
+- If behaviour, pins, units or data formats change, update that folder's `README.md` in the same PR.
 
-## 7. Issues
+## 7. Working with AI agents
+Everyone on this project codes with AI agents (Claude Code, Copilot, Cursor, …). The rules above apply to agents too, plus:
+- Tell your agent to read this file at the start of every session. Most agents don't pick it up on their own.
+- The agent can open and review PRs, but it never approves or merges them. A person does that.
+- It asks you before changing a shared interface (`docs/interfaces.md`) or restructuring folders.
+- If a task touches several teams' folders, it splits the work into separate PRs.
+- You're responsible for everything it commits under your name. Read the diff before you open the PR.
+
+## 8. Reviewing a PR
+1. Check the rules first: branch name, commit format, folder ownership, README updated, interface changes recorded in `docs/interfaces.md` with the affected teams tagged, no stray files (logs, build output, large binaries).
+2. Check that the description matches the diff. Agents sometimes change more than they say.
+3. Then check correctness: does the PR do what it says, and how was it tested? Ask for evidence, not just "works".
+4. List your findings briefly, most serious first, each with its file and line.
+
+## 9. Issues
 - Track work as GitHub Issues with a team label (`hardware`, `simulation`, `testing`).
 - Reference issues in PRs: `Closes #12`.
 
-## 8. Licence
+## 10. Licence
 The printable parts derive from the Core Electronics design (CC BY-NC-SA 4.0). Keep the attribution in `rpm_printables/README.txt` and do not use the design commercially.
