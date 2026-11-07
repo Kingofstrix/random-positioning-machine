@@ -1,0 +1,42 @@
+# Hardware topic: printed parts, assembly, wiring, power, slip ring.
+# Owner: Hardware team. Fields: id, title, do, expect (type defaults to manual).
+steps:
+  - id: HW-01
+    title: All parts printed
+    do: Compare the printed parts with the print list in rpm_printables/README.txt.
+    expect: Every part is there in the listed quantity (06_spur_gear_small 2x), no visible print defects such as warping or layer splits.
+
+  - id: HW-02
+    title: Modified parts fit
+    do: Check the four 3.0 mm corner holes of the outer frame and press M2.5 nuts into the six seats of the experiment platform.
+    expect: Holes are open and round, all six nuts sit flush and do not fall out.
+
+  - id: HW-03
+    title: Gears mesh cleanly
+    do: With the servos unpowered, turn each axis by hand through one full revolution.
+    expect: Gears mesh over the whole turn without skipping, binding or noticeable backlash.
+
+  - id: HW-04
+    title: Frames rotate without collision
+    do: Turn the outer and inner frame by hand through 360° each, in several combinations of positions.
+    expect: No frame, gear, cable or the sample platform touches another part in any position.
+
+  - id: HW-05
+    title: Slip ring continuity
+    do: Measure continuity of every slip ring wire with a multimeter while slowly turning the outer frame.
+    expect: Every wire has continuity over the full rotation, no dropouts, no short between wires.
+
+  - id: HW-06
+    title: Wiring matches the diagram
+    do: Compare servo signal, power and ground wiring to the Pico against the wiring diagram in hardware/.
+    expect: All connections match the diagram, servo ground and Pico ground are connected.
+
+  - id: HW-07
+    title: Servo power supply
+    do: Power the servos from their supply and measure the voltage while both servos move.
+    expect: Servos are not powered from the Pico's USB, voltage stays within the servo spec under load.
+
+  - id: HW-08
+    title: Stand is stable (optional)
+    do: Mount the machine on the optional stands with the M3x6 bolts and run both axes.
+    expect: Machine does not tip or walk; skip this step if the stands are not used.
