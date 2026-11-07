@@ -4,6 +4,7 @@ Used by tests/micropython_smoke.py; records every PWM write for assertions.
 """
 
 writes = {}  # pin -> list of duty_ns values
+fail_on = {}  # pin -> duty_ns value whose write raises OSError (fault injection)
 
 
 class Pin:
@@ -20,4 +21,6 @@ class PWM:
         assert hz == 50
 
     def duty_ns(self, ns):
+        if fail_on.get(self.pin) == ns:
+            raise OSError("injected PWM fault")
         writes[self.pin].append(ns)

@@ -11,9 +11,8 @@ import time
 import config
 from machine import PWM, Pin
 
-from rpm.core.controller import Controller
-from rpm.core.servo import ServoModel
-from rpm.core.strategies import make_strategy
+from rpm.core.controller import Controller, make_controller
+from rpm.core.servo import MAX_PULSE_US, MIN_PULSE_US, ServoModel
 
 PWM_FREQ_HZ = 50
 
@@ -26,6 +25,8 @@ class ServoOutput:
         self.pwm.freq(PWM_FREQ_HZ)
 
     def write_us(self, pulse_us: int) -> None:
+        # Last line of defence: nothing outside the FS90R's range reaches the pin.
+        pulse_us = max(MIN_PULSE_US, min(MAX_PULSE_US, int(pulse_us)))
         self.pwm.duty_ns(pulse_us * 1000)
 
     def off(self) -> None:
@@ -53,9 +54,11 @@ def load_models(path: str) -> "tuple[ServoModel, ServoModel]":
 def run(max_ticks: int = 0) -> Controller:
     """Control loop. ``max_ticks`` > 0 stops after that many ticks (for tests)."""
     outer_model, inner_model = load_models(config.CALIBRATION_FILE)
-    max_speed = min(config.MAX_SPEED, outer_model.max_speed, inner_model.max_speed)
-    strategy = make_strategy(config.STRATEGY, max_speed, config.SEED)
-    controller = Controller(strategy, outer_model, inner_model)
+    # Same construction as the simulation, max_speed capped at what both drives reach.
+    controller = make_controller(
+        config.STRATEGY, config.MAX_SPEED, config.SEED, outer_model, inner_model
+    )
+    max_speed = controller.strategy.max_speed
     outer = ServoOutput(config.OUTER_PIN)
     inner = ServoOutput(config.INNER_PIN)
     print("strategy:", config.STRATEGY, "max_speed:", max_speed, "deg/s, seed:", config.SEED)
@@ -80,13 +83,29 @@ def run(max_ticks: int = 0) -> Controller:
             if wait > 0:
                 time.sleep_ms(wait)
     finally:
-        # Always stop the servos, also on Ctrl-C or an exception.
-        outer.write_us(outer_model.stop_us)
-        inner.write_us(inner_model.stop_us)
-        time.sleep_ms(200)
-        outer.off()
-        inner.off()
+        stop_servos(outer, outer_model.stop_us, inner, inner_model.stop_us)
     return controller
+
+
+def stop_servos(outer: ServoOutput, outer_stop: int, inner: ServoOutput, inner_stop: int) -> None:
+    """Brake both servos, then cut their pulses; on Ctrl-C or an exception too.
+
+    Each step is guarded by its own ``finally``: a failing write or a second
+    Ctrl-C during the pause must not skip switching off the other servo.
+    """
+    try:
+        try:
+            outer.write_us(outer_stop)
+        finally:
+            try:
+                inner.write_us(inner_stop)
+            finally:
+                time.sleep_ms(200)  # let them brake before going limp
+    finally:
+        try:
+            outer.off()
+        finally:
+            inner.off()
 
 
 if __name__ == "__main__":

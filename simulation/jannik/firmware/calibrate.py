@@ -14,6 +14,7 @@ Keep the whole machine assembled, the gears and slip ring are part of the load.
 """
 
 import json
+import math
 import time
 
 import config
@@ -45,9 +46,12 @@ def _ask_seconds(prompt: str) -> float:
     while True:
         text = input(prompt).strip().replace(",", ".")
         try:
-            return float(text)
+            seconds = float(text)
         except ValueError:
-            print("  please type a number, e.g. 4.8, -5.1 or 0")
+            seconds = math.nan
+        if math.isfinite(seconds):  # "nan" and "inf" parse as floats, but are typos
+            return seconds
+        print("  please type a number, e.g. 4.8, -5.1 or 0")
 
 
 def measure(name: str, pin: int) -> "list[list[float]]":

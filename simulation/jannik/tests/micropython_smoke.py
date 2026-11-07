@@ -1,12 +1,19 @@
 """Runs rpm.core under the real MicroPython interpreter (no pytest there).
 
-    cd simulation && MICROPYPATH=. micropython tests/micropython_smoke.py
+    cd simulation/jannik
+    MICROPYPATH=.:firmware:tests/fake_pico micropython tests/micropython_smoke.py
 
 CI runs this so nothing in rpm/core can quietly depend on CPython-only
-features. Reference values must match tests/test_rng_metrics.py.
+features, and boots firmware/main.py against tests/fake_pico/machine.py.
+Reference values must match tests/test_rng_metrics.py and tests/test_strategies.py.
 """
 
 import math
+import os
+
+import config  # firmware/config.py; firmware imports are unconditional on purpose:
+import machine  # a firmware that cannot be imported must fail this test
+import main as firmware
 
 from rpm.core.controller import Controller
 from rpm.core.kinematics import gravity_in_sample
@@ -67,36 +74,43 @@ for name in sorted(REFERENCE_RUNS):
 
 print("micropython smoke test passed")
 
-# Firmware loop against the fake machine module (tests/fake_pico/machine.py):
-# MICROPYPATH=.:firmware:tests/fake_pico
+# Firmware loop against the fake machine module (tests/fake_pico/machine.py).
+firmware.run(max_ticks=20)
+outer_writes = machine.writes[config.OUTER_PIN]
+assert len(outer_writes) == 20 + 2  # 20 ticks, then stop pulse and off
+assert all(700_000 <= ns <= 2_300_000 for ns in outer_writes[:-1])
+assert outer_writes[-1] == 0
+print("firmware loop passed")
+
+# A broken calibration must not stop the Pico at boot (review finding B1):
+# the firmware falls back to the datasheet curve and runs.
+bad = "tests/_bad_calibration.json"
+with open(bad, "w") as f:
+    f.write('{"outer": {"points": [[1000, -5], [1500, 3], [2000, 1]]}, "inner": {}}')
+good_file = config.CALIBRATION_FILE
+config.CALIBRATION_FILE = bad
 try:
-    import machine
-    import main as firmware
-except ImportError:
-    firmware = None
-if firmware is not None:
-    firmware.run(max_ticks=20)
-    import config
+    firmware.run(max_ticks=5)
+finally:
+    config.CALIBRATION_FILE = good_file
+    os.remove(bad)
+assert len(machine.writes[config.OUTER_PIN]) == 5 + 2
+print("broken calibration falls back to datasheet values")
 
-    outer_writes = machine.writes[config.OUTER_PIN]
-    assert len(outer_writes) == 20 + 2  # 20 ticks, then stop pulse and off
-    assert all(700_000 <= ns <= 2_300_000 for ns in outer_writes[:-1])
-    assert outer_writes[-1] == 0
-    print("firmware loop passed")
+# Pulses beyond the servo range never reach the PWM, whatever asks for them.
+probe = firmware.ServoOutput(config.OUTER_PIN)
+probe.write_us(2500)
+probe.write_us(400)
+assert machine.writes[config.OUTER_PIN] == [2_300_000, 700_000]
 
-    # A broken calibration must not stop the Pico at boot (review finding B1):
-    # the firmware falls back to the datasheet curve and runs.
-    import os
-
-    bad = "tests/_bad_calibration.json"
-    with open(bad, "w") as f:
-        f.write('{"outer": {"points": [[1000, -5], [1500, 3], [2000, 1]]}, "inner": {}}')
-    good_file = config.CALIBRATION_FILE
-    config.CALIBRATION_FILE = bad
-    try:
-        firmware.run(max_ticks=5)
-    finally:
-        config.CALIBRATION_FILE = good_file
-        os.remove(bad)
-    assert len(machine.writes[config.OUTER_PIN]) == 5 + 2
-    print("broken calibration falls back to datasheet values")
+# A fault while stopping must not leave the other servo, or this one, powered.
+machine.fail_on[config.OUTER_PIN] = 1_500_000  # the outer stop pulse fails
+try:
+    firmware.run(max_ticks=3)
+    raise AssertionError("the injected fault should propagate")
+except OSError:
+    pass
+machine.fail_on.clear()
+assert machine.writes[config.OUTER_PIN][-1] == 0, machine.writes[config.OUTER_PIN]
+assert machine.writes[config.INNER_PIN][-2:] == [1_500_000, 0]
+print("servos switched off despite a fault during shutdown")
