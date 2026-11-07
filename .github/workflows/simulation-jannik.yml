@@ -1,0 +1,41 @@
+name: simulation-jannik
+
+on:
+  pull_request:
+    paths: ["simulation/jannik/**", ".github/workflows/simulation-jannik.yml"]
+  push:
+    branches: [main]
+    paths: ["simulation/jannik/**", ".github/workflows/simulation-jannik.yml"]
+
+defaults:
+  run:
+    working-directory: simulation/jannik
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - run: uv run pytest
+
+  micropython:
+    # rpm/core and firmware/ must run on the Pico's interpreter, not only on CPython.
+    # Same MicroPython release as the Pico firmware we flash.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the MicroPython unix port
+        working-directory: ${{ runner.temp }}
+        run: |
+          sudo apt-get install -y --no-install-recommends libffi-dev pkg-config
+          git clone --depth 1 --branch v1.29.0 https://github.com/micropython/micropython.git
+          make -C micropython/mpy-cross -j4
+          make -C micropython/ports/unix submodules
+          make -C micropython/ports/unix -j4
+          echo "$PWD/micropython/ports/unix/build-standard" >> "$GITHUB_PATH"
+      - run: MICROPYPATH=. micropython tests/micropython_smoke.py
