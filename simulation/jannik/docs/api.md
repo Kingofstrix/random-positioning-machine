@@ -33,6 +33,9 @@ result.coverage_range       # (min, max) coverage ratio
 result.true_stats           # GravityStats of the true orientation
 result.estimated_stats      # GravityStats of what the Pico believes (dead reckoning)
 result.time_s, result.gravity, result.pulses_us   # numpy arrays, one row per 100 ms tick
+result.mean_g, result.residual_g                  # running mean gravity (n, 3) and its norm
+
+from rpm.sim.export import result_to_dict          # the viewer's JSON, schema in rpm/sim/export.py
 ```
 
 `ServoPlant` describes how a real servo deviates from the controller's model: `speed_error`
