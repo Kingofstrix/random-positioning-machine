@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from rpm.core.servo import GEAR_RATIO, ServoModel
+from rpm.core.servo import GEAR_RATIO, MAX_PULSE_US, MIN_PULSE_US, ServoModel
 
 
 @pytest.fixture
@@ -21,6 +21,24 @@ def test_nominal_curve_shape(nominal: ServoModel) -> None:
     assert nominal.max_speed == pytest.approx(150.0)
 
 
+def test_nominal_defaults_follow_the_plan() -> None:
+    # docs/PLAN.md section 2.5: ~83 rpm at 5 V, saturation at about +-350 us.
+    model = ServoModel.nominal()
+    full = 83.0 * 6.0 / GEAR_RATIO
+    assert model.max_speed == pytest.approx(full)
+    assert model.speed_at(1850) == pytest.approx(full)
+    assert model.speed_at(1150) == pytest.approx(-full)
+    assert model.speed_at(1545) == 0.0
+
+
+def test_pulses_stay_in_the_servo_range() -> None:
+    # A hand-edited calibration may reach beyond 700..2300 us; the PWM must not.
+    model = ServoModel([(600, -150.0), (1450, 0.0), (1550, 0.0), (2400, 150.0)])
+    assert model.pulse_for(150.0) == MAX_PULSE_US
+    assert model.pulse_for(-150.0) == MIN_PULSE_US
+    assert MIN_PULSE_US <= model.pulse_for(149.0) <= MAX_PULSE_US
+
+
 def test_curve_is_monotone(nominal: ServoModel) -> None:
     speeds = [nominal.speed_at(us) for us in np.linspace(600, 2400, 500)]
     assert all(b >= a for a, b in zip(speeds, speeds[1:], strict=False))
@@ -31,7 +49,7 @@ def test_pulse_for_inverts_speed_at(nominal: ServoModel, speed: float) -> None:
     pulse = nominal.pulse_for(speed)
     assert isinstance(pulse, int)
     # Whole microseconds: off by at most half a microsecond's worth of speed.
-    us_step = 150.0 / (500 - 45)
+    us_step = 150.0 / (350 - 45)  # fixture: 100 rpm, full speed at +-350 us
     assert nominal.speed_at(pulse) == pytest.approx(speed, abs=0.5 * us_step + 1e-9)
 
 

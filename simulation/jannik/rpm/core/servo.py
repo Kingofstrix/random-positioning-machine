@@ -11,17 +11,19 @@ of points ``(pulse_us, axis_deg_s)``:
   into the curve.
 - Between the points with speed 0 around the stop pulse lies the dead band.
 
-``ServoModel.nominal()`` uses datasheet values. ``calibration.json`` written
-by ``firmware/calibrate.py`` replaces them with measured points per drive.
-Pulse widths are whole microseconds, as written to the PWM.
+``ServoModel.nominal()`` uses the assumptions of docs/PLAN.md section 2.5
+(datasheet interpolated to 5 V). ``calibration.json`` written by
+``firmware/calibrate.py`` replaces them with measured points per drive.
+Pulse widths are whole microseconds within the servo's 700..2300 us, as
+written to the PWM.
 """
 
 GEAR_RATIO = 4.0  # 15-tooth servo gear driving a 60-tooth axis gear
 
 STOP_US = 1500  # FS90R datasheet: stop at 1500 us
 DEAD_BAND_US = 45  # datasheet: 90 us dead band in total
-FULL_SPEED_US = 500  # full speed at roughly 1000 / 2000 us
-SERVO_RPM_NOMINAL = 100.0  # no-load at ~5 V; sources say 80-110 rpm
+FULL_SPEED_US = 350  # PLAN 2.5: roughly linear up to saturation at about +-350 us
+SERVO_RPM_NOMINAL = 83.0  # PLAN 2.5: 80 rpm at 4.8 V, 100 rpm at 6 V -> ~83 rpm at 5 V
 MIN_PULSE_US = 700  # datasheet pulse range
 MAX_PULSE_US = 2300
 
@@ -91,14 +93,18 @@ class ServoModel:
         return pts[-1][1]  # unreachable, keeps type checkers happy
 
     def pulse_for(self, speed: float) -> int:
-        """Whole-microsecond pulse for ``speed`` deg/s; clamped to the reachable range.
+        """Whole-microsecond pulse for ``speed`` deg/s.
 
-        Zero maps to the centre of the dead band so the drive really stops.
+        Clamped to the reachable speeds and to the servo's 700..2300 us, even if
+        a calibration lists points outside. Zero maps to the centre of the dead
+        band so the drive really stops.
         """
         if speed == 0.0:
-            return self.stop_us
-        speed = max(self.max_reverse, min(self.max_forward, speed))
-        return int(round(self._interp_pulse(speed)))
+            pulse = self.stop_us
+        else:
+            speed = max(self.max_reverse, min(self.max_forward, speed))
+            pulse = int(round(self._interp_pulse(speed)))
+        return max(MIN_PULSE_US, min(MAX_PULSE_US, pulse))
 
     def _interp_pulse(self, speed: float) -> float:
         # The curve is monotone, so a non-flat segment containing ``speed``
