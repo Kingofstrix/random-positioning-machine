@@ -33,14 +33,21 @@ class ServoOutput:
 
 
 def load_models(path: str) -> "tuple[ServoModel, ServoModel]":
+    """Servo curves from ``path``, or the datasheet curves if it is missing or broken.
+
+    A bad file (typo, non-monotone curve) must never keep the Pico from booting.
+    """
     try:
         with open(path) as f:
             data = json.load(f)
+        models = ServoModel.from_dict(data["outer"]), ServoModel.from_dict(data["inner"])
         print("calibration:", path)
-        return ServoModel.from_dict(data["outer"]), ServoModel.from_dict(data["inner"])
+        return models
     except OSError:
         print("calibration: none, using FS90R datasheet values")
-        return ServoModel.nominal(), ServoModel.nominal()
+    except (ValueError, KeyError, TypeError, IndexError) as e:
+        print("calibration: %s is invalid (%s), using FS90R datasheet values" % (path, e))
+    return ServoModel.nominal(), ServoModel.nominal()
 
 
 def run(max_ticks: int = 0) -> Controller:

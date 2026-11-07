@@ -83,3 +83,20 @@ if firmware is not None:
     assert all(700_000 <= ns <= 2_300_000 for ns in outer_writes[:-1])
     assert outer_writes[-1] == 0
     print("firmware loop passed")
+
+    # A broken calibration must not stop the Pico at boot (review finding B1):
+    # the firmware falls back to the datasheet curve and runs.
+    import os
+
+    bad = "tests/_bad_calibration.json"
+    with open(bad, "w") as f:
+        f.write('{"outer": {"points": [[1000, -5], [1500, 3], [2000, 1]]}, "inner": {}}')
+    good_file = config.CALIBRATION_FILE
+    config.CALIBRATION_FILE = bad
+    try:
+        firmware.run(max_ticks=5)
+    finally:
+        config.CALIBRATION_FILE = good_file
+        os.remove(bad)
+    assert len(machine.writes[config.OUTER_PIN]) == 5 + 2
+    print("broken calibration falls back to datasheet values")

@@ -69,8 +69,12 @@ def measure(name: str, pin: int) -> "list[list[float]]":
     return points
 
 
+REJECTED_FILE = "calibration.rejected.json"
+
+
 def main() -> None:
     data = {}
+    problems = []
     for name, pin in DRIVES:
         data[name] = {"points": measure(name, pin)}
         try:
@@ -78,11 +82,16 @@ def main() -> None:
             print("%s: stop at %d us, max %.0f deg/s" % (name, model.stop_us, model.max_speed))
         except ValueError as e:
             # Typically a typo or a slipped stopwatch: speeds must rise (or fall)
-            # steadily with the pulse width. Saved anyway so nothing is lost.
-            print("WARNING %s: %s - fix calibration.json by hand or measure again" % (name, e))
-    with open(config.CALIBRATION_FILE, "w") as f:
+            # steadily with the pulse width.
+            problems.append("%s: %s" % (name, e))
+    # Only a valid file may become calibration.json, which main.py loads at
+    # boot; a bad measurement is kept aside so nothing is lost.
+    path = REJECTED_FILE if problems else config.CALIBRATION_FILE
+    with open(path, "w") as f:
         json.dump(data, f)
-    print("\nsaved", config.CALIBRATION_FILE, "- keep a copy: mpremote cp :calibration.json .")
+    for problem in problems:
+        print("NOT USED %s - measure again or fix %s by hand" % (problem, REJECTED_FILE))
+    print("\nsaved", path, "- keep a copy: mpremote cp :%s ." % path)
     print(json.dumps(data))
 
 

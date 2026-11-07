@@ -72,4 +72,7 @@ that, the geometry gives the directions along the inner axis about twice their s
 
 Each point is `[pulse_us, axis_deg_s]`, signed by the right-hand rule. Points with `0.0` mark the
 dead band, the drive stops in its middle. Speeds must be monotone in pulse width and reach both
-directions. Without the file the firmware uses the PLAN 2.5 assumptions (83 rpm, about 125 deg/s at full speed).
+directions. Without the file, or if it is invalid, the firmware prints why and uses the PLAN 2.5
+assumptions (83 rpm, about 125 deg/s at full speed); a bad file never stops the boot.
+`calibrate.py` writes an invalid measurement to `calibration.rejected.json` instead, so it cannot
+replace a good `calibration.json`. Pulses are always clamped to 700–2300 µs.
