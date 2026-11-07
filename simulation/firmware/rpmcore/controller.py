@@ -156,6 +156,8 @@ class Controller:
             raise ValueError("pulse outside %d..%d us" % (m.min_us, m.max_us))
         self._cal[axis] = us
         self.state = CAL
+        # status() must show what the new state sends even before the next tick.
+        self._pulses = (self._cal["inner"], self._cal["outer"])
 
     def cal_off(self):
         if self.state == CAL:
@@ -219,5 +221,6 @@ class Controller:
         self.state = STOPPED
         self.profile = None
         self._cal = {"inner": None, "outer": None}
+        self._pulses = (None, None)
         for axis in AXES:
             self.limiters[axis].reset()
