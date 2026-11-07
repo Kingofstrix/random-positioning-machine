@@ -76,6 +76,7 @@ class SimResult:
     theta_inner: np.ndarray
     gravity: np.ndarray  # (n, 3) true gravity in the sample frame
     pulses_us: np.ndarray  # (n, 2) commanded pulses (outer, inner)
+    mean_g: np.ndarray  # (n, 3) running mean gravity (true), residual_g is its norm
     params: dict = field(default_factory=dict)
 
     @property
@@ -129,6 +130,7 @@ def run(
     out_i = np.empty(n)
     out_g = np.empty((n, 3))
     out_pulse = np.empty((n, 2))
+    out_mean = np.empty((n, 3))
 
     for i in range(n):
         pulse_o, pulse_i = controller.tick(dt)
@@ -149,6 +151,7 @@ def run(
         out_i[i] = th_i
         out_g[i] = gravity_in_sample(th_o, th_i)
         out_pulse[i] = (pulse_o, pulse_i)
+        out_mean[i] = true_stats.mean_vector()
 
     return SimResult(
         strategy=strategy.name,
@@ -162,6 +165,7 @@ def run(
         theta_inner=out_i,
         gravity=out_g,
         pulses_us=out_pulse,
+        mean_g=out_mean,
         params={
             "max_speed": strategy.max_speed,
             "dt": dt,
