@@ -21,6 +21,7 @@ Examples: `hw/feat/servo-mount`, `sim/fix/gravity-vector-sign`, `test/feat/imu-l
 | `hardware/` (STL, CAD, wiring, BOM) | Hardware |
 | `simulation/` (control logic, models) | Simulation |
 | `testing/` (test plans, scripts, results) | Testing |
+| `interface/` (web interface, GitHub Pages) | Testing |
 | `docs/` | everyone |
 
 Only touch another team's folder if you tag that team in the PR.
