@@ -223,6 +223,38 @@ def section(t, axis, val):
     return pts[cut].reshape(-1, 2, 3)[:, :, other]
 
 
+def inside(seg, pts):
+    """Even-odd rule: is each point inside the closed outline made of `seg`?"""
+    # Only segments a +x ray from some point can cross matter; dropping the rest keeps this fast.
+    lo, hi = pts.min(0), pts.max(0)
+    seg = seg[(seg[:, :, 1].max(1) >= lo[1]) & (seg[:, :, 1].min(1) <= hi[1]) & (seg[:, :, 0].max(1) >= lo[0])]
+    (x1, y1), (x2, y2) = seg[:, 0].T, seg[:, 1].T
+    crosses = (y1[:, None] > pts[:, 1]) != (y2[:, None] > pts[:, 1])
+    dy = np.where(y2 == y1, 1.0, y2 - y1)
+    xi = x1[:, None] + (pts[:, 1] - y1[:, None]) * ((x2 - x1) / dy)[:, None]
+    return (crosses & (pts[:, 0] < xi)).sum(0) % 2 == 1
+
+
+@pytest.mark.parametrize("q", [(0.0, 0.0), (1.1, -2.0)])
+@pytest.mark.parametrize("gear, pinion, axis, frame", PAIRS)
+def test_gear_teeth_do_not_interpenetrate(model, gear, pinion, axis, frame, q):
+    """The pinions turn exactly 4x their frame, so a tooth clash at one angle shows at every angle."""
+    d = posed(model, *q)
+    g, p = tris(model, d, gear, frame), tris(model, d, pinion, frame)
+    gv, pv = g.reshape(-1, 3), p.reshape(-1, 3)
+    cg, cp = tip_centre(gv, axis), tip_centre(pv, axis)
+    tg, tp = teeth_span(gv, axis, cg), teeth_span(pv, axis, cp)
+    lo, hi = max(tg[0], tp[0]), min(tg[1], tp[1])
+    assert hi > lo
+    plane = (lo + hi) / 2                                 # mid of the common face width
+    # Pitch point: where the pitch circles touch, on the line between the centres.
+    contact = cg + (cp - cg) * P.gear_ratio / (P.gear_ratio + 1)
+    xs = np.arange(-RASTER_HALF_WIDTH, RASTER_HALF_WIDTH, RASTER)
+    grid = np.stack(np.meshgrid(xs, xs), -1).reshape(-1, 2) + contact
+    both = inside(section(g, axis, plane), grid) & inside(section(p, axis, plane), grid)
+    assert both.sum() * RASTER**2 <= MAX_TOOTH_OVERLAP
+
+
 # --- servos -------------------------------------------------------------------------------------
 
 SERVOS = [

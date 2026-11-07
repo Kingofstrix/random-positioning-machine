@@ -59,9 +59,19 @@ PARTS = {
     "end_cap": ("07_end_cap.stl", "platform", (0, -63.5, AXIS_POINT[2]), (90, 0, 0)),
 }
 
+# Pinion turn about its own axis at q = 0, so its teeth sit in the gear's tooth gaps (one pinion
+# tooth is 24 deg). The gear equality turns a pinion exactly 4x its frame (60/15 teeth), so a
+# clean mesh at q = 0 stays clean at every angle.
+OUTER_PINION_PHASE = -4.0   # deg
+INNER_PINION_PHASE = 4.0    # deg, for the inner gear turned by SHAFT_END_TURN
+
 PINIONS = {
     # name: (parent body, joint axis, pos mm, euler deg)
-    "outer_pinion": ("base", (1, 0, 0), (OUTER_PINION_X, PINION_OFFSET, SERVO_SHAFT_Z), (0, 0, 0)),
-    "inner_pinion": ("inner_frame", (0, 1, 0), (PINION_OFFSET, INNER_PINION_Y, SERVO_SHAFT_Z), (0, 0, 90)),
+    "outer_pinion": (
+        "base", (1, 0, 0), (OUTER_PINION_X, PINION_OFFSET, SERVO_SHAFT_Z), (OUTER_PINION_PHASE, 0, 0)
+    ),
+    "inner_pinion": (
+        "inner_frame", (0, 1, 0), (PINION_OFFSET, INNER_PINION_Y, SERVO_SHAFT_Z), (0, INNER_PINION_PHASE, 90)
+    ),
 }
 PINION_STL = "06_spur_gear_small.stl"
