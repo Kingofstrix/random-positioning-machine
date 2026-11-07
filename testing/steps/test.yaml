@@ -1,0 +1,33 @@
+# Test topic: full-system checks on the assembled machine running our firmware.
+# Owner: Testing team. Fields: id, title, do, expect (type defaults to manual).
+# Kept short on purpose: the whole topic takes about 10 minutes.
+steps:
+  - id: SYS-01
+    title: Starts without a PC
+    do: Power the machine from its supply only, with no USB connection to a PC.
+    expect: Machine starts random motion on its own within a few seconds.
+
+  - id: SYS-02
+    title: Continuous run with sample, 3 minutes
+    do: Mount a dummy sample on the platform and let the machine run in random-motion mode for 3 minutes. Watch and listen during the run.
+    expect: Both axes keep moving, no stalls, no skipped gear teeth, no tangled cables, no reset. Sample does not move or loosen.
+
+  - id: SYS-03
+    title: Servos after the run
+    do: Right after SYS-02, touch both servos and check the platform screws.
+    expect: Servos are warm at most, not hot. Platform screws are still tight.
+
+  - id: SYS-04
+    title: Noise and vibration
+    do: Recall what you heard and saw during SYS-02.
+    expect: No grinding or clicking, the machine did not shake or walk on its surface.
+
+  - id: SYS-05
+    title: Safe stop on power loss
+    do: Cut the power during motion, then restore it.
+    expect: Machine stops without parts hitting each other and restarts cleanly.
+
+  - id: SYS-06
+    title: Orientation coverage
+    do: Log or simulate a run and evaluate it with the orientation coverage metric.
+    expect: Coverage meets the threshold defined in docs/interfaces.md. Skip until the metric exists.
