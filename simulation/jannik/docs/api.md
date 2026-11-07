@@ -62,9 +62,31 @@ Coverage is deliberately not required to be uniform: without position feedback n
 that, the geometry gives the directions along the inner axis about twice their share
 ([ADR 0002](adr/0002-clinostat-default-strategy.md)).
 
+## Serial commands (Nano)
+
+USB serial, 115200 baud, one command per line, as in `docs/PLAN.md` 5.6. Every reply is one line
+starting with `ok` or `err`.
+
+| Command | Effect |
+|---|---|
+| `help` | list of commands |
+| `status` | `ok state=… mode=… outer_dps=… inner_dps=… outer_us=…\|off inner_us=…\|off t=<ms> residual_est=<g>` |
+| `start [mode]` | start or restart with a fresh seed: same motion as in the simulation |
+| `stop` | ramp both axes down at 60 °/s² (120 °/s: 2 s), then switch the servos off |
+| `estop` | switch the servos off at once (no pulses) |
+| `mode <name>` | strategy for the next start; restarts if running |
+| `set speed <deg/s>` / `set seed <n>` | applies on the next start; speed is capped at what the servos reach |
+| `pulse <outer\|inner> <us>` / `pulse off` | raw pulse 700–2300 µs for calibration, only when stopped |
+
+Modes: `clinostat`, `random_walk`, `random_setpoints`; PLAN's names `clino3d` and `random` are
+accepted as aliases. States: `STOPPED` (no pulses), `RUNNING`, `STOPPING`, `CAL`. While running it
+prints `status` every 10 s on its own.
+
 ## Calibration file
 
-`calibration.json` on the Pico, written by `firmware/calibrate.py`:
+On the Nano: `firmware/nano/rpm_nano/calibration.h`, written by `rpm-nano-calibrate` (same
+points as below, as C arrays). On the legacy Pico: `calibration.json`, written by
+`firmware/calibrate.py`:
 
 ```json
 {
