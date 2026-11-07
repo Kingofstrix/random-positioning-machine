@@ -49,4 +49,4 @@ jobs:
           echo "$PWD/micropython/ports/unix/build-mp" >> "$GITHUB_PATH"
       - name: Check the float precision
         run: micropython -c "assert (16777217.0 == 16777216.0) == ('${{ matrix.float }}' == 'single')"
-      - run: MICROPYPATH=. micropython tests/micropython_smoke.py
+      - run: MICROPYPATH=.:firmware:tests/fake_pico micropython tests/micropython_smoke.py
