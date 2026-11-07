@@ -1,11 +1,6 @@
-"""Command line: ``rpm-sim run`` for one strategy, ``rpm-sim compare`` for the report,
-``rpm-sim export`` and ``rpm-sim viewer`` for the 3D browser viewer."""
+"""Command line: ``rpm-sim run`` for one strategy, ``rpm-sim compare`` for the report."""
 
 import argparse
-import functools
-import http.server
-import threading
-import webbrowser
 from pathlib import Path
 
 from rpm.core.strategies import STRATEGIES
@@ -45,6 +40,12 @@ def _cmd_export(args: argparse.Namespace) -> None:
 
 
 def _cmd_viewer(args: argparse.Namespace) -> None:
+    """Export the default strategies if missing, serve the repo root and open the viewer."""
+    import functools
+    import http.server
+    import threading
+    import webbrowser
+
     from rpm.sim.export import DATA_DIR, PROJECT_DIR, export, update_index
 
     viewer = PROJECT_DIR / "viewer" / "index.html"

@@ -23,6 +23,7 @@ from typing import Any
 
 import numpy as np
 
+from rpm.core.strategies import DEFAULT_MAX_SPEED, make_strategy
 from rpm.sim.simulate import ServoPlant, SimResult, run
 
 SIGNIFICANT_DIGITS = 5
@@ -120,10 +121,16 @@ def export(
     speed_error: float = 0.0,
     noise: float = 0.0,
     out: Path | None = None,
-    target_g: Sequence[float] = (0.0, 0.0, 0.0),
+    max_speed: float = DEFAULT_MAX_SPEED,
 ) -> Path:
-    """Simulate ``strategy`` for ``minutes`` and write the viewer JSON; returns its path."""
+    """Simulate ``strategy`` for ``minutes`` and write the viewer JSON; returns its path.
+
+    A strategy may aim for partial gravity through a ``target_g`` attribute (in g, meaning a
+    target mean of ``(0, 0, -target_g)`` in the sample frame); without one the target is zero.
+    """
+    instance = make_strategy(strategy, max_speed, seed)
+    target = (0.0, 0.0, -float(getattr(instance, "target_g", 0.0)))
     plant = ServoPlant(speed_error=speed_error, noise=noise)
-    result = run(strategy, minutes * 60.0, seed=seed, outer_plant=plant, inner_plant=plant)
-    data = result_to_dict(result, target_g, {"speed_error": speed_error, "noise": noise})
+    result = run(instance, minutes * 60.0, seed=seed, outer_plant=plant, inner_plant=plant)
+    data = result_to_dict(result, target, {"speed_error": speed_error, "noise": noise})
     return write_json(data, out or DATA_DIR / f"{strategy}.json")

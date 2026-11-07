@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from rpm.core.kinematics import gravity_in_sample
+from rpm.core.strategies import Clinostat
 from rpm.sim.export import export, result_to_dict, round_sig, update_index, write_json
 from rpm.sim.simulate import run
 
@@ -108,3 +109,17 @@ def test_index_lists_runs_only(tmp_path: Path) -> None:
     write_json({"strategy": "a"}, tmp_path / "a.json")
     index = json.loads(update_index(tmp_path).read_text())
     assert index == {"runs": ["a.json", "b.json"]}
+
+
+def test_export_takes_target_from_strategy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Partial-gravity strategies carry target_g (in g); the export turns it into the vector.
+    from rpm.sim import export as export_module
+
+    def mars_like(name: str, max_speed: float, seed: int) -> Clinostat:
+        strategy = Clinostat(max_speed, seed)
+        strategy.target_g = 0.379  # type: ignore[attr-defined]
+        return strategy
+
+    monkeypatch.setattr(export_module, "make_strategy", mars_like)
+    data = json.loads(export("clinostat", minutes=0.05, out=tmp_path / "m.json").read_text())
+    assert data["target_g"] == [0.0, 0.0, -0.379]
