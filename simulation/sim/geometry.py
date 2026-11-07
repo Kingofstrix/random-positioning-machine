@@ -56,7 +56,9 @@ PARTS = {
     "gear_large_outer": ("04_spur_gear_large_outer.stl", "inner_frame", (OUTER_GEAR_X, 0, AXIS_POINT[2]), (0, 0, 0)),
     "platform": ("03_experiment_platform.stl", "platform", (0, 0, 0), (0, 0, 0)),
     "gear_large_inner": ("05_spur_gear_large_inner.stl", "platform", (0, INNER_GEAR_Y, AXIS_POINT[2]), (0, SHAFT_END_TURN, 90)),
-    "end_cap": ("07_end_cap.stl", "platform", (0, -63.5, AXIS_POINT[2]), (90, 0, 0)),
+    # Turned onto Y, the 1.5 mm cap spans y -61.5..-60: on the straight square shaft end, against
+    # the inner frame's -Y face, so it stops the platform sliding sideways (guide step 1).
+    "end_cap": ("07_end_cap.stl", "platform", (0, -INNER_FRAME_Y, AXIS_POINT[2]), (90, 0, 0)),
 }
 
 # Pinion turn about its own axis at q = 0, so its teeth sit in the gear's tooth gaps (one pinion

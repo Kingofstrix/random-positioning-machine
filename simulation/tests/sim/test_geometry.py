@@ -180,6 +180,15 @@ def test_inner_gear_bore_turned_onto_the_diamond(model, d0):
     assert l1(bore).min() >= l1(diamond).max() - TOL
 
 
+def test_end_cap_on_shaft_end(model, d0):
+    """The end cap holds the platform against the frame's -Y face, on the shaft's square end."""
+    inf, plat = verts(model, d0, "inner_frame"), verts(model, d0, "platform")
+    cap = verts(model, d0, "end_cap")
+    face = inf[(inf[:, 1] < 0) & (radius(inf, 1) < NEAR_AXIS)][:, 1].min()
+    assert cap[:, 1].max() == pytest.approx(face, abs=TOL)
+    assert cap[:, 1].min() >= plat[:, 1].min() - 1e-6       # on the shaft, not past its tip
+
+
 # --- gear meshing -------------------------------------------------------------------------------
 
 PAIRS = [
