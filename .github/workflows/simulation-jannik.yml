@@ -38,4 +38,4 @@ jobs:
           make -C micropython/ports/unix submodules
           make -C micropython/ports/unix -j4
           echo "$PWD/micropython/ports/unix/build-standard" >> "$GITHUB_PATH"
-      - run: MICROPYPATH=. micropython tests/micropython_smoke.py
+      - run: MICROPYPATH=.:firmware:tests/fake_pico micropython tests/micropython_smoke.py
