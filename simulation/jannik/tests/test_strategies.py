@@ -1,6 +1,7 @@
 import pytest
 
-from rpm.core.controller import OrientationEstimate
+from rpm.core.controller import Controller, OrientationEstimate
+from rpm.core.servo import ServoModel
 from rpm.core.strategies import STRATEGIES, Clinostat, RandomSetpoints, make_strategy
 
 DT = 0.1
@@ -75,3 +76,46 @@ def test_unknown_strategy_is_rejected() -> None:
 def test_max_speed_must_be_positive() -> None:
     with pytest.raises(ValueError):
         Clinostat(max_speed=0.0)
+
+
+# One simulated hour per strategy: a hash of the ticks at which the timers
+# fire and the sum of all pulses. tests/micropython_smoke.py checks the same
+# reference on MicroPython, including a single-precision build like the
+# Pico's: there the timers must match exactly and the pulse sum within a few
+# microseconds (float smoothing may round a pulse differently now and then).
+REFERENCE_RUNS = {
+    "clinostat": (0, 125856000),
+    "random_setpoints": (92546640, 108226584),
+    "random_walk": (3808759477, 108476452),
+}
+
+
+def reference_run(name: str, ticks: int = 36000) -> tuple[int, int]:
+    model = ServoModel.nominal()
+    controller = Controller(make_strategy(name, 120.0, 1), model, model)
+    strategy = controller.strategy
+    events = pulse_sum = 0
+    last = None
+    for k in range(ticks):
+        pulse_o, pulse_i = controller.tick(0.1)
+        pulse_sum += pulse_o + pulse_i
+        timers = getattr(strategy, "next_change_ms", None)
+        key = tuple(timers) if isinstance(timers, list) else timers
+        if key != last:
+            events = (events * 31 + k) & 0xFFFFFFFF
+            last = key
+    return events, pulse_sum
+
+
+@pytest.mark.parametrize("name", sorted(STRATEGIES))
+def test_reference_run(name: str) -> None:
+    assert reference_run(name) == REFERENCE_RUNS[name]
+
+
+def test_random_walk_holds_are_whole_milliseconds() -> None:
+    strategy = make_strategy("random_walk", MAX, 1)
+    estimate = OrientationEstimate()
+    for i in range(600):
+        strategy.step(i * DT, DT, estimate)
+        assert all(isinstance(t, int) for t in strategy.next_change_ms)
+    assert strategy.elapsed_ms == 60000

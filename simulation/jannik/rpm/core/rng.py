@@ -5,8 +5,6 @@ is not available on the Pico. A tiny xorshift32 gives the same sequence
 everywhere, so a seed reproduces a run in simulation and on hardware.
 """
 
-import math
-
 _MASK32 = 0xFFFFFFFF
 _DEFAULT_STATE = 0x9E3779B9
 
@@ -40,9 +38,9 @@ class Rng:
     def uniform(self, low: float, high: float) -> float:
         return low + (high - low) * self.random()
 
-    def exponential(self, mean: float) -> float:
-        """Exponentially distributed waiting time with the given mean."""
-        return -mean * math.log(1.0 - self.random())
+    def randint(self, low: int, high: int) -> int:
+        """Uniform integer in [low, high], exact on every port (no floats)."""
+        return low + self.next_u32() % (high - low + 1)
 
     def sign(self) -> float:
         return 1.0 if self.next_u32() & 1 else -1.0

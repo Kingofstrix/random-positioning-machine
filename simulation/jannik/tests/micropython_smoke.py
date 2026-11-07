@@ -36,4 +36,33 @@ for name in sorted(STRATEGIES):
     assert 0.0 <= residual <= 1.0
     print("ok", name, f"residual(est) {residual:.4f} g")
 
+# Same seed, same motion as CPython (reference from tests/test_strategies.py),
+# also on a single-precision build like the Pico's: timer events exactly, the
+# sum of 72000 pulses to within 0.1 % of them being 1 us off.
+REFERENCE_RUNS = {
+    "clinostat": (0, 125856000),
+    "random_setpoints": (92546640, 108226584),
+    "random_walk": (3808759477, 108476452),
+}
+nominal = ServoModel.nominal()
+for name in sorted(REFERENCE_RUNS):
+    controller = Controller(make_strategy(name, 120.0, 1), nominal, nominal)
+    strategy = controller.strategy
+    events = pulse_sum = 0
+    last = None
+    for k in range(36000):  # one simulated hour
+        pulse_o, pulse_i = controller.tick(0.1)
+        pulse_sum += pulse_o + pulse_i
+        timers = getattr(strategy, "next_change_ms", None)
+        key = tuple(timers) if isinstance(timers, list) else timers
+        if key != last:
+            events = (events * 31 + k) & 0xFFFFFFFF
+            last = key
+    ref_events, ref_sum = REFERENCE_RUNS[name]
+    assert events == ref_events, (name, events)
+    assert abs(pulse_sum - ref_sum) <= 72, (name, pulse_sum - ref_sum)
+    total = controller.estimate.stats.total_time
+    assert abs(total - 3600.0) < 0.01, (name, total)  # compensated sum, also in float32
+    print("ok", name, "1 h matches CPython: pulse sum off by", pulse_sum - ref_sum, "us")
+
 print("micropython smoke test passed")

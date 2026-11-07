@@ -31,9 +31,11 @@ def test_rng_zero_seed_does_not_get_stuck() -> None:
     assert len({rng.next_u32() for _ in range(10)}) == 10
 
 
-def test_rng_exponential_mean() -> None:
+def test_rng_randint_is_inclusive_and_uniform() -> None:
     rng = Rng(3)
-    assert np.mean([rng.exponential(6.0) for _ in range(20000)]) == pytest.approx(6.0, rel=0.05)
+    values = [rng.randint(2000, 2004) for _ in range(20000)]
+    assert set(values) == {2000, 2001, 2002, 2003, 2004}
+    assert np.mean(values) == pytest.approx(2002.0, abs=0.05)
 
 
 def test_cell_centres_form_a_regular_dodecahedron() -> None:
