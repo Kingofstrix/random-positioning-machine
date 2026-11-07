@@ -248,9 +248,11 @@ Seed 0 wird auf eine feste Konstante abgebildet (xorshift darf nicht 0 sein). Im
 
 `ServoMap(cal)`:
 - `pulse_for(frame_dps) -> int µs`: 0 → `neutral_us` exakt. Sonst Offset aus der Tabelle für
-  die Richtung interpolieren (der erste Tabellenpunkt überspringt das Totband), **vom Neutralwert
-  weg runden** (positive Richtung aufrunden, negative abrunden, damit jede Drehzahl ≠ 0 sicher
-  außerhalb des Totbands landet) und auf `[min_us, max_us]` clampen.
+  die Richtung interpolieren (der erste Tabellenpunkt ist die Totbandkante dieser Richtung),
+  auf ganze µs runden. Jede Drehzahl ≠ 0 bekommt **mindestens 1 µs mehr als die Totbandkante
+  ihrer Richtung**, sonst bliebe sie im Totband stehen. Jenseits des letzten Tabellenpunkts
+  bleibt der Offset dort (Servo gesättigt), danach auf `[min_us, max_us]` clampen. Tabellen
+  werden beim Erzeugen geprüft (aufsteigend, Vorzeichen, kein NaN) → sonst `ValueError`.
 - `max_dps() -> float`: kleinster Endwert beider Richtungen (Profile clampen darauf).
 - `dps_for(pulse_us)`: Umkehrung (für Status und Tests).
 
@@ -261,7 +263,9 @@ Seed 0 wird auf eine feste Konstante abgebildet (xorshift darf nicht 0 sein). Im
   - `RandomWalkProfile(cfg, rng)`: hält Zielwerte für eine zufällige Dauer
     `uniform(hold_min, hold_max)`, danach für **jede Achse unabhängig**
     Betrag `uniform(v_min, v_max)` × zufälliges Vorzeichen. `v_min > 0` sorgt dafür, dass nie im
-    Totband stehen geblieben wird. Der Halte-Timer läuft intern in int-ms.
+    Totband stehen geblieben wird. Der Halte-Timer läuft intern in int-ms; die Haltedauer
+    direkt als int-ms aus `next_u32()` ziehen (nicht über `uniform`), damit Pico (float32) und
+    Sim (float64) exakt dieselben Dauern bekommen.
   - `Clinostat3DProfile(cfg)`: konstante Drehzahlen (nicht ganzzahliges Verhältnis).
   - `Clinostat2DProfile(cfg)`: nur outer dreht, inner = 0.
 - Registry: `PROFILES = {"random": ..., "clino3d": ..., "clino2d": ...}`.
@@ -434,9 +438,11 @@ Zusatzbeschleunigung. Optional `--video`: Offscreen-Render 20 s mit 4× Zeitraff
 
 - **prng**: gleicher Seed → gleiche Folge; `random()` in [0, 1); Seed 0 erlaubt; 10⁴ Werte
   haben Mittel 0,5 ± 0,02.
-- **servo_map**: 0 °/s → 1500 µs; kleinste positive Drehzahl → > 1545 µs (Totband
-  übersprungen); monoton steigend; Clamping auf [700, 2300]; `dps_for(pulse_for(x)) ≈ x`
-  (Toleranz ±0,3 °/s wegen Rundung auf ganze µs); asymmetrische Tabellen werden respektiert.
+- **servo_map**: 0 °/s → 1500 µs; kleinste positive Drehzahl → genau 1546 µs, kleinste
+  negative → 1454 µs (1 µs hinter der Totbandkante der jeweiligen Richtung, auch bei
+  asymmetrischen Tabellen); monoton steigend; Clamping auf [700, 2300];
+  `dps_for(pulse_for(x)) ≈ x` für |x| ≥ 1 °/s (Toleranz ±0,3 °/s wegen Rundung auf ganze µs;
+  darunter gilt die Mindestschritt-Regel); asymmetrische Tabellen werden respektiert.
 - **motion**: SlewLimiter überschreitet nie `rate·dt`; RandomWalk-Ziele haben Betrag in
   [v_min, v_max]; beide Vorzeichen kommen vor (über 100 Wechsel); Haltezeiten in
   [hold_min, hold_max]; gleicher Seed → gleiche Ziele; clino2d liefert inner = 0.
