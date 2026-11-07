@@ -47,3 +47,21 @@ class MachineParams:
     @property
     def density(self) -> float:
         return self.pla_density * self.fill_factor
+
+
+@dataclass(frozen=True)
+class ReportParams:
+    """Plot and video settings of sim.report (docs/PLAN.md 6.8)."""
+
+    fig_size: tuple = (8.0, 4.5)              # inch
+    dpi: int = 120
+
+    video_seconds: float = 20.0               # length of the MP4
+    video_speedup: float = 4.0                # sim seconds per video second
+    video_fps: int = 30
+    # Must not exceed the model's offscreen buffer (MuJoCo default 640 x 480).
+    video_width: int = 640
+    video_height: int = 480
+    cam_azimuth: float = 135.0                # deg
+    cam_elevation: float = -20.0              # deg
+    cam_distance: float = 1.2                 # in units of the model extent

@@ -27,13 +27,34 @@ def windowed_residual(g_series: np.ndarray, window_s: float, sample_hz: float) -
     return float(np.median(r)), float(np.percentile(r, 95))
 
 
-def sphere_coverage(dirs: np.ndarray, n_bands: int = 10, n_sectors: int = 20) -> tuple[float, float]:
-    """Equal-area bins (equal steps in z and in azimuth) -> (share of bins hit, std/mean of counts)."""
+SPHERE_BANDS = 10    # equal steps in z
+SPHERE_SECTORS = 20  # equal steps in azimuth
+
+
+def sphere_bins(dirs: np.ndarray, n_bands: int = SPHERE_BANDS, n_sectors: int = SPHERE_SECTORS) -> np.ndarray:
+    """Hit counts in equal-area bins, shape (n_bands, n_sectors).
+
+    Equal steps in z cut equal areas (Archimedes), so a uniform cover gives equal counts.
+    Band 0 is z = -1, sector 0 starts at azimuth -pi.
+    """
     u = dirs / np.linalg.norm(dirs, axis=1, keepdims=True)
     band = np.clip(((u[:, 2] + 1) / 2 * n_bands).astype(int), 0, n_bands - 1)
     phi = np.arctan2(u[:, 1], u[:, 0])
     sector = np.clip(((phi + np.pi) / (2 * np.pi) * n_sectors).astype(int), 0, n_sectors - 1)
     counts = np.bincount(band * n_sectors + sector, minlength=n_bands * n_sectors)
+    return counts.reshape(n_bands, n_sectors)
+
+
+def sphere_bin_edges(n_bands: int = SPHERE_BANDS, n_sectors: int = SPHERE_SECTORS) -> tuple[np.ndarray, np.ndarray]:
+    """Bin edges of sphere_bins as (longitude, latitude) in rad, for map projections."""
+    lon = np.linspace(-np.pi, np.pi, n_sectors + 1)
+    lat = np.arcsin(np.linspace(-1.0, 1.0, n_bands + 1))
+    return lon, lat
+
+
+def sphere_coverage(dirs: np.ndarray, n_bands: int = SPHERE_BANDS, n_sectors: int = SPHERE_SECTORS) -> tuple[float, float]:
+    """Equal-area bins (equal steps in z and in azimuth) -> (share of bins hit, std/mean of counts)."""
+    counts = sphere_bins(dirs, n_bands, n_sectors)
     return float((counts > 0).mean()), float(counts.std() / counts.mean())
 
 
@@ -42,8 +63,13 @@ def extra_accel(acc: np.ndarray, g_series: np.ndarray) -> tuple[float, float]:
 
     An accelerometer reads acc = a - g, so acc + g is the real acceleration of the sample.
     """
-    e = np.linalg.norm(acc + g_series, axis=1) / G0
+    e = extra_accel_series(acc, g_series)
     return float(e.max()), float(np.sqrt(np.mean(e**2)))
+
+
+def extra_accel_series(acc: np.ndarray, g_series: np.ndarray) -> np.ndarray:
+    """|acc + g| per sample in g (see extra_accel)."""
+    return np.linalg.norm(acc + g_series, axis=1) / G0
 
 
 def speed_tracking(cmd: np.ndarray, actual: np.ndarray) -> np.ndarray:
