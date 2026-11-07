@@ -13,7 +13,7 @@ echten Maschine kalibrieren · **[prüfen]** = unsicher, im Viewer/am Gerät ver
 - Die STLs werden **nicht** kopiert, die Sim lädt sie direkt aus `rpm_printables/`.
 - Jeder Meilenstein geht über Branch + PR (Squash-Merge). Große Meilensteine werden auf mehrere
   PRs unter ~400 Zeilen verteilt (M1: prng + servo_map + AST-Test / motion + controller / commands).
-- `mujoco>=3.2,<4`: 4.0.0 gibt es auf PyPI nur als Quellpaket, 3.9 hat Wheels bis Python 3.14.
+- `mujoco>=3.2,<4`: 4.0.0 gibt es auf PyPI nur als Quellpaket, die 3.x-Reihe hat Wheels (3.17 bis Python 3.14).
 
 ---
 
