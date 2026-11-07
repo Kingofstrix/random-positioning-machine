@@ -1,0 +1,37 @@
+# Software topic: Pico firmware and PC simulation.
+# Owner: Simulation team. Fields: id, title, do, expect (type defaults to manual).
+steps:
+  - id: SW-01
+    title: Firmware builds
+    do: Build the firmware from a clean checkout as described in simulation/README.md.
+    expect: Build finishes without errors and without new warnings.
+
+  - id: SW-02
+    title: Firmware flashes and boots
+    do: Flash the firmware to the Raspberry Pi Pico and open the serial monitor.
+    expect: Pico boots and prints its startup message with the firmware version.
+
+  - id: SW-03
+    title: Each axis responds
+    do: Command axis 1 and then axis 2 to move in both directions.
+    expect: Only the commanded axis moves, in the commanded direction.
+
+  - id: SW-04
+    title: Stop command
+    do: While both axes move, send the stop command.
+    expect: Both axes stop within one second and stay stopped.
+
+  - id: SW-05
+    title: Random motion changes over time
+    do: Start random-motion mode and watch the serial log for two minutes.
+    expect: Speeds and directions of both axes change repeatedly and do not follow an obvious repeating pattern.
+
+  - id: SW-06
+    title: Simulation runs
+    do: Start the PC simulation as described in simulation/README.md.
+    expect: Simulation starts without errors and shows the platform orientation changing over time.
+
+  - id: SW-07
+    title: Simulation and firmware agree
+    do: Compare the algorithm parameters and units used by the simulation and the firmware with docs/interfaces.md.
+    expect: Both use the same parameters, units and coordinate frames as documented.
