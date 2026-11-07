@@ -11,6 +11,8 @@ The simulation feeds the returned pulses into a model of the real servos; the
 firmware writes them to the PWM pins. Both run exactly this code.
 """
 
+import math
+
 from rpm.core.kinematics import DEG, gravity_in_sample, wrap_angle
 from rpm.core.metrics import GravityStats
 
@@ -20,6 +22,18 @@ if TYPE_CHECKING:
     from rpm.core.strategies import Strategy
 
 RESPONSE_LAG_S = 0.1  # assumed first-order speed response of an FS90R
+
+
+def first_order(speed: float, target: float, t: float, lag_s: float) -> "tuple[float, float]":
+    """Speed after ``t`` seconds of a first-order lag towards ``target``, and the distance.
+
+    Exact solution, so the result does not depend on how long the step is.
+    Distance is in units of ``speed`` times seconds.
+    """
+    if lag_s <= 0.0:
+        return target, target * t
+    decay = math.exp(-t / lag_s)
+    return target + (speed - target) * decay, target * t + (speed - target) * lag_s * (1.0 - decay)
 
 
 class OrientationEstimate:
@@ -42,17 +56,17 @@ class OrientationEstimate:
 
     def advance(self, target_outer: float, target_inner: float, dt: float) -> None:
         """Move the estimate forward by ``dt`` seconds at the commanded speeds (deg/s)."""
-        k = min(1.0, dt / self.lag_s) if self.lag_s > 0.0 else 1.0
-        self.speed_outer += k * (target_outer - self.speed_outer)
-        self.speed_inner += k * (target_inner - self.speed_inner)
-        half_o = 0.5 * dt * self.speed_outer * DEG
-        half_i = 0.5 * dt * self.speed_inner * DEG
-        # Midpoint rule: sample gravity halfway through the step.
-        mid_o = self.theta_outer + half_o
-        mid_i = self.theta_inner + half_i
-        self.stats.add(gravity_in_sample(mid_o, mid_i), dt)
-        self.theta_outer = wrap_angle(mid_o + half_o)
-        self.theta_inner = wrap_angle(mid_i + half_i)
+        lag = self.lag_s
+        # Gravity is sampled where the axes are halfway through the step in time.
+        _, mid_o = first_order(self.speed_outer, target_outer, 0.5 * dt, lag)
+        _, mid_i = first_order(self.speed_inner, target_inner, 0.5 * dt, lag)
+        self.speed_outer, step_o = first_order(self.speed_outer, target_outer, dt, lag)
+        self.speed_inner, step_i = first_order(self.speed_inner, target_inner, dt, lag)
+        self.stats.add(
+            gravity_in_sample(self.theta_outer + mid_o * DEG, self.theta_inner + mid_i * DEG), dt
+        )
+        self.theta_outer = wrap_angle(self.theta_outer + step_o * DEG)
+        self.theta_inner = wrap_angle(self.theta_inner + step_i * DEG)
 
 
 class Controller:

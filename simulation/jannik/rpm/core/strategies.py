@@ -103,12 +103,13 @@ class RandomSetpoints(Strategy):
 
 
 class Clinostat(Strategy):
-    """Classic two-axis clinostat: constant speeds with an irrational ratio.
+    """Classic two-axis clinostat: constant speeds, ratio far from 1.
 
     Gravity averages out for every speed ratio except |ratio| = 1: then the
     inner axis keeps a fixed phase to the outer one and 0.5 g remains.
-    The default 1/phi^2 = 0.382 is irrational (the path never closes) and
-    stays below 0.6 even if the two servos err by 20 % in opposite directions.
+    The default 1/phi^2 = 0.382 stays below 0.6 even if the two servos err by
+    20 % in opposite directions. (Whole-microsecond pulses make the real ratio
+    rational, 8/21 with the nominal curve; that is harmless, only 1 is bad.)
 
     A constant outer speed lets gravity linger along the inner (platform) axis,
     so coverage is not uniform (about 2x share there); see docs/adr/0002.

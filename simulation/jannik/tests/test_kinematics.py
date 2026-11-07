@@ -57,3 +57,24 @@ def test_wrap_angle_range() -> None:
         wrapped = wrap_angle(theta)
         assert 0.0 <= wrapped < TWO_PI
         assert math.sin(wrapped) == pytest.approx(math.sin(theta))
+
+
+def test_estimate_follows_the_first_order_lag_exactly() -> None:
+    # From rest to 120 deg/s with lag 0.1 s: after one 0.1 s tick the axis has
+    # covered 120 * (0.1 - 0.1 * (1 - e^-1)) = 4.41455 deg, not 12 deg.
+    import math
+
+    from rpm.core.controller import OrientationEstimate
+    from rpm.core.kinematics import DEG
+
+    estimate = OrientationEstimate(lag_s=0.1)
+    estimate.advance(120.0, 0.0, 0.1)
+    expected = 120.0 * (0.1 - 0.1 * (1.0 - math.exp(-1.0)))
+    assert estimate.theta_outer / DEG == pytest.approx(expected, rel=1e-12)
+    assert estimate.speed_outer == pytest.approx(120.0 * (1.0 - math.exp(-1.0)), rel=1e-12)
+    # Reversal: from +120 to -120 deg/s.
+    estimate = OrientationEstimate(lag_s=0.1)
+    estimate.speed_outer = 120.0
+    estimate.advance(-120.0, 0.0, 0.1)
+    expected = -120.0 * 0.1 + 240.0 * 0.1 * (1.0 - math.exp(-1.0))
+    assert estimate.theta_outer / DEG == pytest.approx(expected % 360.0, rel=1e-12)
