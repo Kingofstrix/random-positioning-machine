@@ -21,7 +21,7 @@ address (https) or `localhost`. Opening `index.html` straight from the disk does
 
 1. Plug the machine into the computer with USB and open the live page in Chrome or Edge.
 2. Press **Connect machine** and pick the machine's port in the browser's list.
-3. Type the sample name, press **Start turning**.
+3. Type the sample name (or keep the prefilled ID), press **Start turning**.
 4. Press **Stop gently** when done. **Emergency stop** (or the Esc key) switches the motors off at once.
 5. **Export for Excel**: *Copy table* and paste into Excel, or *Download file* (CSV). Choose German
    or English Excel so separators and decimal commas come out right.
@@ -49,9 +49,12 @@ The switch in the top bar adds, on the same page:
 - The machine log is kept in memory for the latest run and is lost when the page closes.
 - CSV files are UTF-8 with BOM. German: `;` and decimal comma. English: `,` and decimal point.
 
-Results columns: `Date, Start, End, Duration (minutes), How it ended, Sample, Notes` (+ `Mode` in
+Every run gets an ID `RPM-YYMMDD-NN` (NN counts the runs of that day). The sample name is prefilled
+with the ID and falls back to it when left empty, so no run is ever without a name.
+
+Results columns: `Date, ID, Start, End, Duration (minutes), How it ended, Sample, Notes` (+ `Mode` in
 expert mode). Machine log columns: `Date, Time, Seconds since start, State, Outer ring speed (°/s,
-commanded), Inner ring speed (°/s, commanded), Outer motor signal (µs), Inner motor signal (µs), Sample`.
+commanded), Inner ring speed (°/s, commanded), Outer motor signal (µs), Inner motor signal (µs), ID, Sample`.
 
 ## How it talks to the machine
 
