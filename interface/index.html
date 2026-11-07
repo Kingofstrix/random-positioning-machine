@@ -116,6 +116,7 @@ table{border-collapse:collapse;width:100%;font-size:14px}
 th{position:sticky;top:0;background:var(--soft);text-align:left;font-weight:600;padding:6px 8px;white-space:nowrap;z-index:1}
 td{padding:5px 8px;border-top:1px solid var(--line);vertical-align:middle;white-space:nowrap}
 td.num{text-align:right;font-variant-numeric:tabular-nums}
+td.sid{font-family:var(--f-mono);font-size:13px}
 td input{width:100%;min-width:7em;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);font-size:14px}
 tr.live td{background:var(--tint)}
 .ex{font-size:11px;padding:0 6px;border-radius:999px;background:var(--soft);color:var(--muted);margin-left:4px}
@@ -250,7 +251,7 @@ dl.kv dd{margin:0}
           <div class="end"><button class="btn" id="btnExport" type="button" popovertarget="pop-export">Export for Excel</button></div></div>
         <div class="list">
           <table id="runsTable">
-            <thead><tr><th>Date</th><th>Sample</th><th>Notes</th><th>Min.</th><th>Ended</th><th class="colx">Mode</th><th><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Delete</span></th></tr></thead>
+            <thead><tr><th>Date</th><th>ID</th><th>Sample</th><th>Notes</th><th>Min.</th><th>Ended</th><th class="colx">Mode</th><th><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Delete</span></th></tr></thead>
             <tbody id="runsBody"></tbody>
           </table>
         </div>
@@ -358,7 +359,7 @@ dl.kv dd{margin:0}
 </div>
 <div popover id="help-results">
   <h3>Results</h3>
-  <p>Every time you press Start, a new row appears. Type your sample name and notes, for example what you saw.</p>
+  <p>Every time you press Start, a new row appears with its own ID, for example RPM-261107-01. The sample name is filled in with the ID; type over it with your own name if you like. Add notes, for example what you saw.</p>
   <p>Runs without a machine are marked "practice". Measurements from the machine will be added here once the teams decide what the machine measures.</p>
   <p>The list is saved only in this browser on this computer, so export it after each experiment.</p>
   <div class="row"><button class="btn" popovertarget="help-results" popovertargetaction="hide">Close</button></div>
@@ -457,15 +458,35 @@ dl.kv dd{margin:0}
   function fDate(ms) { var d = new Date(ms); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
   function fTime(ms) { if (ms == null) return ""; var d = new Date(ms); return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
   function mins(r) { return ((r.end != null ? r.end : Date.now()) - r.start) / 6e4; }
+  // Every run gets an ID: RPM-YYMMDD-NN (NN counts runs per day). A sample without a name uses its ID.
+  function idPrefix(ms) { var d = new Date(ms); return "RPM-" + String(d.getFullYear()).slice(2) + pad(d.getMonth() + 1) + pad(d.getDate()) + "-"; }
+  function nextId(ms) {
+    var p = idPrefix(ms || Date.now()), n = 0;
+    runs.forEach(function (r) { if (r.sid && r.sid.indexOf(p) === 0) n = Math.max(n, parseInt(r.sid.slice(p.length), 10) || 0); });
+    return p + pad(n + 1);
+  }
+  function ensureIds() {
+    runs.slice().sort(function (a, b) { return a.start - b.start; }).forEach(function (r) {
+      if (!r.sid) r.sid = nextId(r.start);
+      if (!String(r.sample || "").trim()) r.sample = r.sid;
+    });
+  }
+  var autoSample = "";
+  function refreshSampleDefault() {
+    var inp = $("sampleInput"), v = inp.value.trim();
+    if (!v || v === autoSample) { autoSample = nextId(); inp.value = autoSample; }
+  }
   function endedText(r) {
     if (r.end == null) return "Running";
     return r.how + (r.mode === "practice" ? " (practice)" : r.mode === "simulated" ? " (simulated)" : "");
   }
   function runBegin(startMs) {
     var mode = !link ? "practice" : link.kind === "sim" ? "simulated" : "machine";
-    cur = { id: "r" + Date.now(), start: startMs || Date.now(), end: null, how: "", sample: $("sampleInput").value.trim(), notes: "", mode: mode, example: false };
+    var sid = nextId();
+    cur = { id: "r" + Date.now(), sid: sid, start: startMs || Date.now(), end: null, how: "", sample: $("sampleInput").value.trim() || sid, notes: "", mode: mode, example: false };
     runs.push(cur); save(); renderRuns();
     mlog = { runId: cur.id, rows: [], lastT: -1 }; updLogCount();
+    refreshSampleDefault();
     S.runStart = nowS() - (Date.now() - cur.start) / 1000;
   }
   function runFinish(how) {
@@ -479,11 +500,13 @@ dl.kv dd{margin:0}
       var tr = document.createElement("tr"); if (r.end == null) tr.className = "live";
       var d = td(tr, fDate(r.start) + " " + fTime(r.start));
       if (r.example) { var b = document.createElement("span"); b.className = "ex"; b.textContent = "Example"; d.appendChild(b); }
+      td(tr, r.sid || "", "sid");
       ["sample", "notes"].forEach(function (k) {
         var c = td(tr, ""), inp = document.createElement("input");
         inp.type = "text"; inp.value = r[k]; inp.id = k + "-" + r.id;
         inp.setAttribute("aria-label", (k === "sample" ? "Sample" : "Notes") + ", run " + fDate(r.start) + " " + fTime(r.start));
         inp.addEventListener("input", function () { r[k] = inp.value; save(); });
+        if (k === "sample") inp.addEventListener("change", function () { if (!inp.value.trim()) { inp.value = r.sid; r.sample = r.sid; save(); } });
         c.appendChild(inp);
       });
       td(tr, mins(r).toFixed(0), "num").id = "dur-" + r.id;
@@ -510,11 +533,11 @@ dl.kv dd{margin:0}
   /* ---------- export ---------- */
   function isExpert() { return $("expertSwitch").getAttribute("aria-checked") === "true"; }
   function rows(dec) {
-    var head = ["Date", "Start", "End", "Duration (minutes)", "How it ended", "Sample", "Notes"];
+    var head = ["Date", "ID", "Start", "End", "Duration (minutes)", "How it ended", "Sample", "Notes"];
     if (isExpert()) head.push("Mode");
     var out = [head];
     runs.forEach(function (r) {
-      var row = [fDate(r.start), fTime(r.start), fTime(r.end), mins(r).toFixed(1).replace(".", dec), r.end == null ? "Running" : r.how, r.sample, r.notes];
+      var row = [fDate(r.start), r.sid, fTime(r.start), fTime(r.end), mins(r).toFixed(1).replace(".", dec), r.end == null ? "Running" : r.how, r.sample, r.notes];
       if (isExpert()) row.push(r.mode);
       out.push(row);
     });
@@ -548,10 +571,10 @@ dl.kv dd{margin:0}
   function num(v, d) { return v !== "" && v != null && isFinite(v) ? Number(v).toFixed(d).replace(".", decSep()) : ""; }
   function logRows() {
     var run = runs.filter(function (x) { return x.id === mlog.runId; })[0], sample = run ? run.sample : "";
-    var out = [["Date", "Time", "Seconds since start", "State", "Outer ring speed (°/s, commanded)", "Inner ring speed (°/s, commanded)", "Outer motor signal (µs)", "Inner motor signal (µs)", "Sample"]];
+    var out = [["Date", "Time", "Seconds since start", "State", "Outer ring speed (°/s, commanded)", "Inner ring speed (°/s, commanded)", "Outer motor signal (µs)", "Inner motor signal (µs)", "ID", "Sample"]];
     mlog.rows.forEach(function (r) {
       var d = new Date(r.time);
-      out.push([fDate(r.time), pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()), num(r.t, 1), r.state, num(r.outer, 2), num(r.inner, 2), r.outer_us, r.inner_us, sample]);
+      out.push([fDate(r.time), pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()), num(r.t, 1), r.state, num(r.outer, 2), num(r.inner, 2), r.outer_us, r.inner_us, run ? run.sid : "", sample]);
     });
     return out;
   }
@@ -882,16 +905,17 @@ dl.kv dd{margin:0}
     $("timer").textContent = S.st === "stop" ? (S.lastDur ? "Last run: " + fmtDur(S.lastDur) : "Ready") : "Running for " + fmtDur(t - S.runStart);
     if (cur) { var dc = $("dur-" + cur.id); if (dc) dc.textContent = mins(cur).toFixed(0); }
     if (!$("view-machine").hidden) drawBuild($("showCanvas"), SHOW.to, SHOW.ti, true);
-    $("runSample").textContent = cur ? (cur.sample ? "Sample: " + cur.sample : "") + " · started " + fTime(cur.start) : "";
+    $("runSample").textContent = cur ? cur.sid + " · " + cur.sample + " · started " + fTime(cur.start) : "";
     requestAnimationFrame(frame);
   }
 
   /* ---------- boot ---------- */
   runs = load() || examples();
   runs.forEach(function (r) { if (r.end == null) { r.end = r.start; r.how = "Page closed"; } });
+  ensureIds(); save();
   try { if (localStorage.getItem("rpm-hub-expert") === "1") setExpert(true); } catch (e) { }
   showView(location.hash.slice(1));
-  readColors(); setState("stop"); renderRuns(); updLogCount();
+  readColors(); setState("stop"); renderRuns(); updLogCount(); refreshSampleDefault();
   logLine("practice mode: no machine connected");
   if (PREVIEW_SIMULATED_MACHINE) {
     $("sampleInput").value = "Wheat seeds, tray A";
