@@ -3,9 +3,10 @@
 The meshes are read straight from `rpm_printables/` instead of a copy, so the hardware team's
 files stay the single source and their licence attribution stays in one place.
 
-The frames, platform and end cap use the shared assembly frame. The gears and the stand do
-not: each gear STL is centred on the origin with its axis along X, so they are placed here.
-Gear and servo positions along their axes are read off the assembly guide pictures [prüfen].
+The frames and the platform use the shared assembly frame. The gears, the end cap and the stand
+do not: each gear STL is centred on the origin with its axis along X, so they are placed here.
+Each placement is checked against the mating part's mesh in tests/sim/test_geometry.py, and
+against the assembly guide pictures.
 """
 
 import math
@@ -19,6 +20,7 @@ AXIS_POINT = (0.0, 0.0, 2.5)
 FLOOR_Y = -91.19            # underside of the stands
 
 OUTER_FRAME_X = 84.61       # outer face of the outer frame's side bars
+OUTER_FRAME_INNER_X = 76.68 # inner face of the outer frame's side bars, around the bearing hole
 INNER_FRAME_Y = 60.0        # outer face of the inner frame on the +Y side
 
 GEAR_CENTER_DIST = 38.0     # 60-tooth gear to 15-tooth pinion, module ~1
@@ -27,16 +29,17 @@ SERVO_SHAFT_Z = 14.5        # servo screw holes lie on this height
 # That matches where a 9 g servo's shaft sits between its screw holes.
 PINION_OFFSET = math.sqrt(GEAR_CENTER_DIST**2 - (SERVO_SHAFT_Z - AXIS_POINT[2]) ** 2)
 
-# Large gears sit just outside their frames (assembly guide, steps 1 and 3).
-OUTER_GEAR_X = -(OUTER_FRAME_X + 3.6)       # gear spans x -2.5..3 in its STL
+# Outer gear (guide step 3): on the inner frame's square -X stub, between the two frames. Its
+# collar (STL x -2.5..0) bears on the outer frame's inner face, its disc (0..3) holds the stub.
+OUTER_GEAR_X = -(OUTER_FRAME_INNER_X - 2.5)
 INNER_GEAR_Y = INNER_FRAME_Y + 4.5          # gear spans x -4..3 in its STL, turned onto Y
 OUTER_PINION_X = OUTER_GEAR_X - 2.3         # pinion spans x 0..5 in its STL
 INNER_PINION_Y = INNER_GEAR_Y - 2.5
 
 SERVO_BOX = (22.5, 12.1, 27.7)   # FS90R length, width, height (height along the shaft)
 # Servo bodies [prüfen]. Inner: inside the frame between its screw holes (x 29.1/56.6, bar at
-# y 55), shaft through the bar to the pinion. Outer: outside behind its pinion, because inside
-# it would sit in the sweep of the inner frame.
+# y 55), shaft through the bar to the pinion. Outer (guide step 4): body outside the outer
+# frame, passing the bar between its two screw posts, the box ending at its pinion inside.
 OUTER_SERVO_CENTER = (OUTER_PINION_X - SERVO_BOX[2] / 2, 41.6, SERVO_SHAFT_Z)
 INNER_SERVO_CENTER = (42.85, 55.0 - SERVO_BOX[2] / 2, SERVO_SHAFT_Z)
 
