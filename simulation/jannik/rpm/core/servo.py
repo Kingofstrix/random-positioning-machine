@@ -18,6 +18,8 @@ Pulse widths are whole microseconds within the servo's 700..2300 us, as
 written to the PWM.
 """
 
+import math
+
 GEAR_RATIO = 4.0  # 15-tooth servo gear driving a 60-tooth axis gear
 
 STOP_US = 1500  # FS90R datasheet: stop at 1500 us
@@ -33,6 +35,10 @@ class ServoModel:
 
     def __init__(self, points: "list[tuple[float, float]]") -> None:
         pts = sorted((float(us), float(speed)) for us, speed in points)
+        for us, speed in pts:
+            # NaN fails every comparison below, so it would slip through silently.
+            if not (math.isfinite(us) and math.isfinite(speed)):
+                raise ValueError("calibration points must be finite numbers")
         if len(pts) < 2:
             raise ValueError("need at least two calibration points")
         for (us0, _), (us1, _) in zip(pts, pts[1:]):
@@ -49,6 +55,11 @@ class ServoModel:
         zeros = [us for us, speed in pts if speed == 0.0]
         stop = (min(zeros) + max(zeros)) / 2.0 if zeros else self._interp_pulse(0.0)
         self.stop_us = int(round(stop))
+        if not MIN_PULSE_US <= self.stop_us <= MAX_PULSE_US:
+            # Written unclamped at shutdown, so it has to be a valid pulse itself.
+            raise ValueError(
+                "stop pulse %d us outside %d..%d" % (self.stop_us, MIN_PULSE_US, MAX_PULSE_US)
+            )
         self.max_forward = max(pts[0][1], pts[-1][1])
         self.max_reverse = min(pts[0][1], pts[-1][1])
 

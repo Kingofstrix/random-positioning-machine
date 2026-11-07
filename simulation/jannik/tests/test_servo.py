@@ -99,3 +99,22 @@ def test_calibration_round_trip() -> None:
 def test_invalid_calibrations_are_rejected(points: list[tuple[float, float]]) -> None:
     with pytest.raises(ValueError):
         ServoModel(points)
+
+
+@pytest.mark.parametrize(
+    "points",
+    [
+        [(1000, -100.0), (1500, float("nan")), (2000, 100.0)],  # NaN slips past comparisons
+        [(1000, -100.0), (float("inf"), 0.0), (2000, 100.0)],
+        [(1000, float("-inf")), (2000, 100.0)],
+    ],
+)
+def test_non_finite_calibrations_are_rejected(points: list[tuple[float, float]]) -> None:
+    with pytest.raises(ValueError, match="finite"):
+        ServoModel(points)
+
+
+def test_stop_pulse_outside_the_servo_range_is_rejected() -> None:
+    # The stop pulse is written as is at shutdown, so it must be a valid pulse.
+    with pytest.raises(ValueError, match="stop"):
+        ServoModel([(2400, -100.0), (2500, 0.0), (2600, 100.0)])
