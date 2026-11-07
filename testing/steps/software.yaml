@@ -23,7 +23,7 @@ steps:
 
   - id: SW-05
     title: Random motion changes over time
-    do: Start random-motion mode and watch the serial log for two minutes.
+    do: Start random-motion mode and watch the serial log for 30 seconds.
     expect: Speeds and directions of both axes change repeatedly and do not follow an obvious repeating pattern.
 
   - id: SW-06
