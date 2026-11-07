@@ -1,0 +1,34 @@
+"""All firmware parameters in one place (docs/PLAN.md 5.1).
+
+Values marked [Annahme] in the plan are estimates until the machine is calibrated (M7).
+"""
+
+
+def _servo_cal():
+    # A fresh dict per axis, so calibrating one axis can never change the other.
+    return {
+        "neutral_us": 1500,
+        "min_us": 700,
+        "max_us": 2300,
+        # Calibration table: (frame speed in deg/s, pulse offset in us), per direction,
+        # ascending speed. The first point is the edge of the deadband (FS90R: +-45 us).
+        "pos": [(0.0, 45), (125.0, 350)],
+        "neg": [(0.0, -45), (125.0, -350)],
+    }
+
+
+CONFIG = {
+    # Assembly guide: outer servo GP15, inner servo (via slip ring) GP16.
+    "pins": {"outer": 15, "inner": 16},
+    "tick_ms": 20,
+    "gear_ratio": 4.0,
+    "autostart": True,
+    "default_mode": "random",
+    "seed": 1,
+    "accel_dps2": 20.0,
+    "random": {"v_min_dps": 10.0, "v_max_dps": 60.0, "hold_min_s": 5.0, "hold_max_s": 20.0},
+    # 30 / 18.54 is close to the golden ratio, so the two rotations never phase-lock.
+    "clino3d": {"outer_dps": 30.0, "inner_dps": 18.54},
+    "clino2d": {"outer_dps": 30.0},
+    "servo": {"outer": _servo_cal(), "inner": _servo_cal()},
+}
