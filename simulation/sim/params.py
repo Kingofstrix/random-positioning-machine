@@ -16,6 +16,10 @@ class MachineParams:
     servo_neutral_us: int = 1500
     deadband_half_us: int = 45
     sat_offset_us: int = 350                  # pulse offset where the servo saturates [Annahme]
+    # How the real servo of each axis differs from the nominal one, as (inner, outer). The firmware
+    # keeps its nominal table, so this models calibration mismatch (robustness envelope, PR #25).
+    servo_speed_scale: tuple = (1.0, 1.0)
+    servo_neutral_shift_us: tuple = (0, 0)
 
     pla_density: float = 1240.0               # kg/m^3, solid PLA
     fill_factor: float = 0.6                  # infill share of a printed part [Annahme]
