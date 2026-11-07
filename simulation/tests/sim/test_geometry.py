@@ -299,6 +299,7 @@ def test_stand_holes_line_up_with_frame_holes(model, d0, stand, side):
 SERVOS = [
     # servo box, its frame, the frame's own geom, pinion, shaft axis, lateral axis (box length)
     ("outer_servo", "base", "outer_frame", "outer_pinion", 0, 1),
+    ("inner_servo", "inner_frame", "inner_frame", "inner_pinion", 1, 0),
 ]
 MOVING = {"outer_servo": ("inner_frame", 0), "inner_servo": ("platform", 1)}
 

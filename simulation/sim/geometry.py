@@ -44,11 +44,13 @@ OUTER_PINION_X = OUTER_GEAR_X - 2.3         # pinion spans x 0..5 in its STL
 INNER_PINION_Y = INNER_GEAR_Y - 2.5
 
 SERVO_BOX = (22.5, 12.1, 27.7)   # FS90R length, width, height (height along the shaft)
-# Servo bodies [prüfen]. Inner: inside the frame between its screw holes (x 29.1/56.6, bar at
-# y 55), shaft through the bar to the pinion. Outer (guide step 4): body outside the outer
-# frame, passing the bar between its two screw posts, the box ending at its pinion inside.
+# Servo bodies (guide steps 2 and 4). Each passes its frame bar between the two screw posts and
+# the box, which includes the output shaft, ends at the pinion it drives. Outer: body outside
+# the outer frame. Inner: body inside the inner frame, pinion outside. Past the bar's body-side
+# part the outer frame narrows the slot to the shaft boss, which the plain box ignores.
+INNER_SERVO_POSTS_X = (30.40, 53.30)   # inner faces of the inner frame's screw posts
 OUTER_SERVO_CENTER = (OUTER_PINION_X - SERVO_BOX[2] / 2, 41.6, SERVO_SHAFT_Z)
-INNER_SERVO_CENTER = (42.85, 55.0 - SERVO_BOX[2] / 2, SERVO_SHAFT_Z)
+INNER_SERVO_CENTER = (sum(INNER_SERVO_POSTS_X) / 2, INNER_PINION_Y - SERVO_BOX[2] / 2, SERVO_SHAFT_Z)
 
 # name: (STL file, body, pos mm, euler deg xyz)
 PARTS = {
