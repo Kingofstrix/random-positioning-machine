@@ -18,8 +18,8 @@ From `rpm-sim compare` (25 runs of 10 min per strategy, see [`results/`](../../r
 | Strategy | median residual | worst residual | coverage |
 |---|---:|---:|---|
 | `clinostat` | 0.0011 g | 0.0030 g | 0.60–2.10 |
-| `random_setpoints` | 0.041 g | 0.094 g | 0.44–2.33 |
-| `random_walk` | 0.042 g | 0.098 g | 0.41–2.40 |
+| `random_setpoints` | 0.041 g | 0.094 g | 0.43–2.33 |
+| `random_walk` | 0.042 g | 0.098 g | 0.41–2.41 |
 
 Speed matters less than the strategy (30 runs each: envelope corners plus nominal, seeds 1–5):
 
@@ -27,7 +27,7 @@ Speed matters less than the strategy (30 runs each: envelope corners plus nomina
 |---:|---:|---:|
 | 30 °/s | 0.011 g | 0.19 g |
 | 60 °/s | 0.0046 g | 0.10 g |
-| 90 °/s | 0.0026 g | 0.090 g |
+| 90 °/s | 0.0025 g | 0.090 g |
 | 120 °/s | 0.0030 g | 0.098 g |
 
 So the clinostat would also pass at 60 °/s, half the servo's maximum, if the team prefers to
@@ -40,7 +40,8 @@ spare the gears; random motion fails at every speed.
    every speed ratio inner/outer except |ratio| = 1. There the inner angle keeps a fixed phase to
    the outer one and **0.5 g remains** (`test_equal_axis_speeds_do_not_average_out`). The ratio
    1/φ² ≈ 0.382 is irrational and stays below 0.6 even when both servos err by 20 % in opposite
-   directions; the golden ratio 0.618 could reach 0.93 and failed with 0.021 g.
+   directions; the golden ratio 0.618 could reach 0.93 and failed with 0.021 g. Whole-microsecond pulses make
+   the real ratio rational (8/21 nominally); that is harmless, only a ratio of 1 resonates.
 3. **Coverage cannot be uniform without position feedback.** The z component `-cos o` lingers near
    ±1 whenever the outer angle is uniform in time, which it is for every strategy that does not
    know `o`. Gravity then sits along the inner axis about twice as long as it should, for *all*

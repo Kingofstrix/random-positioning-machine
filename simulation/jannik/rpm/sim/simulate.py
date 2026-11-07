@@ -13,17 +13,16 @@ tick and give the *true* metrics, which the acceptance criteria judge.
 """
 
 import itertools
-import math
 import random
 from dataclasses import dataclass, field
 
 import numpy as np
 
-from rpm.core.controller import RESPONSE_LAG_S, Controller
+from rpm.core.controller import RESPONSE_LAG_S, Controller, first_order, make_controller
 from rpm.core.kinematics import DEG, gravity_in_sample, wrap_angle
 from rpm.core.metrics import GravityStats
 from rpm.core.servo import ServoModel
-from rpm.core.strategies import DEFAULT_MAX_SPEED, Strategy, make_strategy
+from rpm.core.strategies import DEFAULT_MAX_SPEED, Strategy
 
 CONTROL_DT_S = 0.1  # the Pico firmware ticks every 100 ms
 
@@ -103,16 +102,20 @@ def run(
 ) -> SimResult:
     """Simulate ``duration_s`` seconds of one strategy and return the metrics.
 
-    ``strategy`` is a name from ``STRATEGIES`` (built with ``max_speed`` in
-    deg/s and ``seed``) or a ready ``Strategy`` instance.
+    ``strategy`` is a name from ``STRATEGIES`` or a ready ``Strategy``
+    instance. A name is built exactly like the firmware does it
+    (``make_controller``): with ``seed`` and ``max_speed`` in deg/s, capped at
+    what both servo models reach.
     """
-    if isinstance(strategy, str):
-        strategy = make_strategy(strategy, max_speed, seed)
     outer_model = outer_model or ServoModel.nominal()
     inner_model = inner_model or ServoModel.nominal()
     outer_plant = outer_plant or ServoPlant()
     inner_plant = inner_plant or ServoPlant()
-    controller = Controller(strategy, outer_model, inner_model)
+    if isinstance(strategy, str):
+        controller = make_controller(strategy, max_speed, seed, outer_model, inner_model)
+    else:
+        controller = Controller(strategy, outer_model, inner_model)
+    strategy = controller.strategy
     noise_rng = random.Random(seed * 7919 + 17)
 
     n = int(round(duration_s / dt))
@@ -131,15 +134,15 @@ def run(
         pulse_o, pulse_i = controller.tick(dt)
         target_o = outer_plant.true_speed(outer_model, pulse_o, noise_rng) * DEG
         target_i = inner_plant.true_speed(inner_model, pulse_i, noise_rng) * DEG
-        k_o = 1.0 - math.exp(-h / outer_plant.lag_s) if outer_plant.lag_s > 0 else 1.0
-        k_i = 1.0 - math.exp(-h / inner_plant.lag_s) if inner_plant.lag_s > 0 else 1.0
         for _ in range(physics_substeps):
-            w_o += k_o * (target_o - w_o)
-            w_i += k_i * (target_i - w_i)
-            g = gravity_in_sample(th_o + 0.5 * h * w_o, th_i + 0.5 * h * w_i)
-            true_stats.add(g, h)
-            th_o = wrap_angle(th_o + h * w_o)
-            th_i = wrap_angle(th_i + h * w_i)
+            # Exact first-order response; gravity sampled at the temporal midpoint.
+            _, mid_o = first_order(w_o, target_o, 0.5 * h, outer_plant.lag_s)
+            _, mid_i = first_order(w_i, target_i, 0.5 * h, inner_plant.lag_s)
+            true_stats.add(gravity_in_sample(th_o + mid_o, th_i + mid_i), h)
+            w_o, step_o = first_order(w_o, target_o, h, outer_plant.lag_s)
+            w_i, step_i = first_order(w_i, target_i, h, inner_plant.lag_s)
+            th_o = wrap_angle(th_o + step_o)
+            th_i = wrap_angle(th_i + step_i)
         out_t[i] = (i + 1) * dt
         out_res[i] = true_stats.residual_gravity()
         out_o[i] = th_o

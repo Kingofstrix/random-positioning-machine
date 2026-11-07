@@ -7,8 +7,8 @@ Criteria (docs/api.md): residual gravity < 0.01 g in *every* run, coverage ratio
 | Strategy | median residual [g] | worst residual [g] | coverage min..max | pass |
 |---|---:|---:|---|:---:|
 | `clinostat` | 0.0011 | 0.0030 | 0.60..2.10 | yes |
-| `random_setpoints` | 0.0411 | 0.0941 | 0.44..2.33 | no |
-| `random_walk` | 0.0415 | 0.0984 | 0.41..2.40 | no |
+| `random_setpoints` | 0.0411 | 0.0941 | 0.43..2.33 | no |
+| `random_walk` | 0.0415 | 0.0984 | 0.41..2.41 | no |
 
 ![Residual gravity](residual.png)
 

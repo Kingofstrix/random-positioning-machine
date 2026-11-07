@@ -101,3 +101,22 @@ class Controller:
         )
         self.ticks += 1
         return pulse_o, pulse_i
+
+
+def make_controller(
+    strategy_name: str,
+    max_speed: float,
+    seed: int,
+    outer_model: "ServoModel",
+    inner_model: "ServoModel",
+) -> Controller:
+    """The controller the firmware runs, also used by the simulation.
+
+    ``max_speed`` is capped at what *both* drives reach according to their
+    models: commanding more would saturate the axes, and two saturated drives
+    of equal speed turn at a ratio of 1, the one resonance (0.5 g left).
+    """
+    from rpm.core.strategies import make_strategy
+
+    capped = min(max_speed, outer_model.max_speed, inner_model.max_speed)
+    return Controller(make_strategy(strategy_name, capped, seed), outer_model, inner_model)

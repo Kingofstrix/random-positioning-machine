@@ -62,3 +62,32 @@ def test_clinostat_meets_acceptance_criteria(
     assert result.residual_gravity < RESIDUAL_LIMIT_G
     assert lo >= COVERAGE_MIN
     assert hi <= COVERAGE_MAX
+
+
+def test_plant_follows_the_first_order_lag_exactly() -> None:
+    # One tick from rest: the true axis covers speed * (dt - lag * (1 - e^(-dt/lag))),
+    # independent of the number of physics substeps (Codex review: was 4.79 deg
+    # instead of 4.41 deg at 120 deg/s).
+    import math
+
+    from rpm.core.kinematics import DEG
+    from rpm.core.servo import ServoModel
+
+    model = ServoModel.nominal()
+    for substeps in (1, 10, 50):
+        result = run(Clinostat(), duration_s=0.1, physics_substeps=substeps)
+        speed = model.speed_at(result.pulses_us[0, 0])
+        expected = speed * (0.1 - 0.1 * (1.0 - math.exp(-1.0)))
+        assert result.theta_outer[0] / DEG == pytest.approx(expected, rel=1e-9)
+
+
+def test_slow_calibrated_servos_cap_the_strategy_like_the_firmware() -> None:
+    # Codex review: with drives that only reach 45 deg/s the simulation used to
+    # command 120 deg/s on both axes, saturating both at the same speed (ratio 1,
+    # 0.5 g left), while the firmware caps max_speed to what the drives reach.
+    from rpm.core.servo import ServoModel
+
+    slow = ServoModel.nominal(servo_rpm=30.0)
+    result = run("clinostat", duration_s=600.0, outer_model=slow, inner_model=slow)
+    assert result.params["max_speed"] == pytest.approx(slow.max_speed)
+    assert result.residual_gravity < RESIDUAL_LIMIT_G
