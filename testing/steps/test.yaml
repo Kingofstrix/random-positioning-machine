@@ -1,33 +1,51 @@
 # Test topic: full-system checks on the assembled machine running our firmware.
 # Owner: Testing team. Fields: id, title, do, expect (type defaults to manual).
+#
+# Needs the firmware on the Pico (milestone M2 in docs/PLAN.md). Until then, skip the topic.
+# Commands go to the Pico over its USB serial console (protocol: docs/PLAN.md 5.6).
 # Kept short on purpose: the whole topic takes about 10 minutes.
 steps:
   - id: SYS-01
-    title: Starts without a PC
-    do: Power the machine from its supply only, with no USB connection to a PC.
-    expect: Machine starts random motion on its own within a few seconds.
+    title: Pin check
+    do: Send `estop`, then `pulse outer 1600` and `pulse off`, then `pulse inner 1600` and `pulse off`.
+    expect: "`pulse outer` turns the inner frame inside the outer frame, `pulse inner` turns the platform. If swapped: wiring or `pins` in config.py is wrong (see docs/interfaces.md)."
 
   - id: SYS-02
-    title: Continuous run with sample, 3 minutes
-    do: Mount a dummy sample on the platform and let the machine run in random-motion mode for 3 minutes. Watch and listen during the run.
-    expect: Both axes keep moving, no stalls, no skipped gear teeth, no tangled cables, no reset. Sample does not move or loosen.
+    title: Servos stand still at neutral
+    do: Send `pulse outer 1500`, wait 5 seconds, `pulse inner 1500`, wait 5 seconds, then `pulse off`.
+    expect: Neither frame creeps. If one does, adjust the trim pot under that servo (FS90R) and repeat.
 
   - id: SYS-03
-    title: Servos after the run
-    do: Right after SYS-02, touch both servos and check the platform screws.
-    expect: Servos are warm at most, not hot. Platform screws are still tight.
+    title: Starts without a PC
+    do: Power the machine from its 5 V supply only, with no PC connected.
+    expect: Random motion starts on its own within a few seconds (autostart, mode random), the onboard LED blinks.
 
   - id: SYS-04
-    title: Noise and vibration
-    do: Recall what you heard and saw during SYS-02.
-    expect: No grinding or clicking, the machine did not shake or walk on its surface.
+    title: Continuous run with sample, 3 minutes
+    do: Mount a dummy sample on the platform and let the machine run in random mode for 3 minutes. Watch and listen during the run.
+    expect: Both axes keep moving and change speed and direction every 5 to 20 s. No stalls, no skipped gear teeth, no tangled cables, no reset. Sample does not move or loosen.
 
   - id: SYS-05
-    title: Safe stop on power loss
-    do: Cut the power during motion, then restore it.
-    expect: Machine stops without parts hitting each other and restarts cleanly.
+    title: Servos after the run
+    do: Right after SYS-04, touch both servos and check the platform screws.
+    expect: Servos are warm at most, not hot. Platform screws are still tight.
 
   - id: SYS-06
-    title: Orientation coverage
-    do: Log or simulate a run and evaluate it with the orientation coverage metric.
-    expect: Coverage meets the threshold defined in docs/interfaces.md. Skip until the metric exists.
+    title: Noise and vibration
+    do: Recall what you heard and saw during SYS-04.
+    expect: No grinding or clicking, the machine did not shake or walk on its surface.
+
+  - id: SYS-07
+    title: Soft stop and emergency stop
+    do: With a PC connected and the machine running, send `stop`. Then `start random`, wait 10 seconds and send `estop`.
+    expect: "`stop`: both frames slow down smoothly and stand still within about 5 s. `estop`: servos switch off at once."
+
+  - id: SYS-08
+    title: Restart after power loss
+    do: Cut the power during motion, then restore it.
+    expect: Machine stops without parts hitting each other and starts random motion again by itself.
+
+  - id: SYS-09
+    title: Microgravity quality (simulation)
+    do: In simulation/ run `python -m sim.run --mode random --minutes 30 --seed 1 --out results/` and open results/summary.json. Simulated time, so it runs faster than 30 real minutes.
+    expect: Residual gravity below 0.05 g and sphere coverage above 90 % of bins (docs/PLAN.md 8.3, preliminary thresholds). Skip until M5.

@@ -28,13 +28,13 @@ steps:
 
   - id: HW-06
     title: Wiring matches the diagram
-    do: Compare servo signal, power and ground wiring to the Pico against the wiring diagram in hardware/.
-    expect: All connections match the diagram, servo ground and Pico ground are connected.
+    do: Compare the wiring with the table in docs/interfaces.md.
+    expect: Outer servo signal on GP15 (pin 20), inner servo signal via slip ring on GP16 (pin 21), 5 V on VBUS (pin 40), GND on pin 38. The original Core Electronics code swaps the two signal pins; the interfaces doc is what counts.
 
   - id: HW-07
     title: Servo power supply
-    do: Power the servos from their supply and measure the voltage while both servos move.
-    expect: Servos are not powered from the Pico's USB, voltage stays within the servo spec under load.
+    do: Check the rating of the 5 V supply feeding the Pico, then measure VBUS against GND while both servos move.
+    expect: Supply delivers at least 1.6 A (two stalled FS90R servos), a plain PC USB port is not enough. VBUS stays at or above 4.8 V under load.
 
   - id: HW-08
     title: Stand is stable (optional)
