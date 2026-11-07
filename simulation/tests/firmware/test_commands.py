@@ -73,7 +73,7 @@ def test_help_lists_every_command(c):
 def test_status_format(c):
     f = fields(handle(c, "status"))
     assert set(f) == {"state", "mode", "inner_dps", "outer_dps", "inner_us", "outer_us", "t"}
-    assert f["state"] == STOPPED and f["mode"] == "random"
+    assert f["state"] == STOPPED and f["mode"] == c.cfg["default_mode"]
     assert f["inner_us"] == f["outer_us"] == "off"
     assert float(f["inner_dps"]) == 0.0 and float(f["t"]) == 0.0
 

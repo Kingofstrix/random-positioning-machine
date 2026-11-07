@@ -108,7 +108,7 @@ def result_name(mode: str, seed: int, payload_offset_mm=(0.0, 0.0, 0.0)) -> str:
 
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--mode", default="random", choices=["random", "clino3d", "clino2d"])
+    ap.add_argument("--mode", default=CONFIG["default_mode"], choices=["random", "clino3d", "clino2d"])
     ap.add_argument("--minutes", type=float, default=30.0)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", type=Path, default=Path("results"))

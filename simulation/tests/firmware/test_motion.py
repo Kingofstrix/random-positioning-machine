@@ -152,7 +152,7 @@ def test_random_equal_hold_bounds(rparams):
 def test_clino3d_constant(cfg):
     p = Clinostat3DProfile(cfg["clino3d"], XorShift32(1))
     for _ in range(100):
-        assert p.targets(DT) == (18.54, 30.0)
+        assert p.targets(DT) == (cfg["clino3d"]["inner_dps"], cfg["clino3d"]["outer_dps"])
 
 
 def test_clino2d_only_outer(cfg):

@@ -7,11 +7,14 @@ the two may disagree, just like the real servo and an imperfect calibration.
 from sim.params import MachineParams
 
 
-def u_from_pulse(pulse_us: int | None, p: MachineParams) -> float:
-    """Drive level in [-1, 1]. None (PWM off) and pulses inside the deadband give 0."""
+def u_from_pulse(pulse_us: int | None, p: MachineParams, neutral_shift_us: int = 0) -> float:
+    """Drive level in [-1, 1]. None (PWM off) and pulses inside the deadband give 0.
+
+    `neutral_shift_us` moves this servo's real neutral away from the nominal one.
+    """
     if pulse_us is None:
         return 0.0
-    off = pulse_us - p.servo_neutral_us
+    off = pulse_us - (p.servo_neutral_us + neutral_shift_us)
     mag = abs(off) - p.deadband_half_us
     if mag <= 0:
         return 0.0

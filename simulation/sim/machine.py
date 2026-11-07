@@ -25,8 +25,10 @@ class SimMachine:
         p = self.params
         d = self.data
         # The velocity actuator realises tau = tau_stall * (u - omega/omega0) with ctrl = u*omega0.
-        d.ctrl[self._act["inner"]] = u_from_pulse(inner_us, p) * p.omega0
-        d.ctrl[self._act["outer"]] = u_from_pulse(outer_us, p) * p.omega0
+        # Each axis may run its own, mis-calibrated servo: shifted neutral and scaled speed.
+        for i, (axis, us) in enumerate((("inner", inner_us), ("outer", outer_us))):
+            u = u_from_pulse(us, p, p.servo_neutral_shift_us[i])
+            d.ctrl[self._act[axis]] = u * p.omega0 * p.servo_speed_scale[i]
         n = max(1, int(round((p.control_dt if duration is None else duration) / p.timestep)))
         mujoco.mj_step(self.model, d, nstep=n)
 

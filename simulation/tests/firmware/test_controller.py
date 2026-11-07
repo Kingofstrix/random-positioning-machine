@@ -52,14 +52,14 @@ def test_start_ramps_up(c, cfg):
             assert abs(v - p) <= accel * DT + 1e-9
             assert abs(v) <= accel * DT * i + 1e-9
         prev = cur
-    assert speeds(c) == (18.54, 30.0)
+    assert speeds(c) == (cfg["clino3d"]["inner_dps"], cfg["clino3d"]["outer_dps"])
 
 
-def test_start_unknown_mode_rejected(c):
+def test_start_unknown_mode_rejected(c, cfg):
     with pytest.raises(ValueError):
         c.start("warp")
     assert c.state == STOPPED
-    assert c.mode == "random"
+    assert c.mode == cfg["default_mode"]
 
 
 def test_stop_ramps_down_then_pwm_off(c, cfg):
@@ -146,10 +146,10 @@ def test_set_mode_while_stopped_is_remembered(c):
     assert speeds(c) == (0.0, 30.0)
 
 
-def test_set_mode_unknown_rejected(c):
+def test_set_mode_unknown_rejected(c, cfg):
     with pytest.raises(ValueError):
         c.set_mode("nope")
-    assert c.mode == "random"
+    assert c.mode == cfg["default_mode"]
 
 
 def test_targets_clamped_to_servo_range(cfg):
@@ -226,8 +226,8 @@ def test_stop_and_estop_end_cal(c):
 @pytest.mark.parametrize(
     "key, value",
     [
-        ("v_min", 0), ("v_min", -5), ("v_min", 70),        # 70 > v_max 60
-        ("v_max", 5),                                     # below v_min 10
+        ("v_min", 0), ("v_min", -5), ("v_min", 100),       # 100 > v_max 90
+        ("v_max", 5),                                     # below v_min 30
         ("v_max", 126),                                   # beyond servo range
         ("accel", 0), ("accel", float("nan")), ("accel", float("inf")),
         ("hold_min", 0), ("hold_min", 30),                # 30 > hold_max 20
@@ -283,7 +283,7 @@ def test_numeric_strings_accepted(c):
 def test_status_fields(c):
     s = c.status()
     assert set(s) == {"state", "mode", "inner_dps", "outer_dps", "inner_us", "outer_us", "t_ms"}
-    assert (s["state"], s["mode"], s["t_ms"]) == (STOPPED, "random", 0)
+    assert (s["state"], s["mode"], s["t_ms"]) == (STOPPED, c.cfg["default_mode"], 0)
     assert s["inner_us"] is None and s["outer_us"] is None
 
 
@@ -460,7 +460,7 @@ def test_cal_pulse_limits_inclusive(c, axis, us):
     assert c.tick(DT)[0 if axis == "inner" else 1] == us
 
 
-@pytest.mark.parametrize("key, value", [("v_min", 60), ("v_max", 10), ("hold_min", 20), ("hold_max", 5)])
+@pytest.mark.parametrize("key, value", [("v_min", 90), ("v_max", 30), ("hold_min", 20), ("hold_max", 5)])
 def test_equal_bounds_accepted(c, key, value):
     c.set_param(key, value)
 
