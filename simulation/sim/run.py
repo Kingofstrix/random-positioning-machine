@@ -1,13 +1,14 @@
 """Closed loop: the rpmcore controller drives the simulated machine (docs/PLAN.md 6.5).
 
 python -m sim.run --mode random --minutes 30 --seed 1 --out results/
+python -m sim.run --mode random --minutes 10 --seed 1 --payload-offset-mm 0 0 10   # PLAN 8.3
 """
 
 import argparse
 import copy
 import json
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -16,6 +17,7 @@ import sim  # noqa: F401  (puts firmware/ on sys.path)
 from rpmcore.config import CONFIG
 from rpmcore.controller import Controller
 from sim.machine import SimMachine
+from sim.mjcf import MM
 from sim.metrics import extra_accel, residual_g, speed_tracking, sphere_coverage, windowed_residual
 from sim.params import MachineParams
 
@@ -92,16 +94,33 @@ def summarize(log: SimLog) -> dict:
     return out
 
 
+def result_name(mode: str, seed: int, payload_offset_mm=(0.0, 0.0, 0.0)) -> str:
+    """<mode>_s<seed>, plus the payload offset when it is not zero.
+
+    A run with a different machine gets its own .npz and summary entry, so it can never
+    replace the standard run of the same mode and seed.
+    """
+    name = "%s_s%d" % (mode, seed)
+    if any(payload_offset_mm):
+        name += "_off%smm" % "_".join("%g" % v for v in payload_offset_mm)
+    return name
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--mode", default="random", choices=["random", "clino3d", "clino2d"])
     ap.add_argument("--minutes", type=float, default=30.0)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", type=Path, default=Path("results"))
+    ap.add_argument("--payload-offset-mm", type=float, nargs=3, default=(0.0, 0.0, 0.0),
+                    metavar=("X", "Y", "Z"),
+                    help="sample position from the axis intersection in mm, STL frame")
     a = ap.parse_args(argv)
     a.out.mkdir(parents=True, exist_ok=True)
-    log = simulate(a.mode, a.minutes, a.seed)
-    name = "%s_s%d" % (a.mode, a.seed)
+    params = replace(MachineParams(),
+                     payload_offset=tuple(v * MM for v in a.payload_offset_mm))
+    log = simulate(a.mode, a.minutes, a.seed, params=params)
+    name = result_name(a.mode, a.seed, a.payload_offset_mm)
     log.save(a.out / (name + ".npz"))
     summary_path = a.out / "summary.json"
     summary = json.loads(summary_path.read_text()) if summary_path.exists() else {}

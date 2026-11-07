@@ -8,7 +8,6 @@ import pytest
 
 from rpmcore.config import CONFIG
 from sim.metrics import G0, extra_accel, residual_g, speed_tracking, sphere_coverage, windowed_residual
-from sim.params import MachineParams
 from sim.run import SimLog, main, simulate, summarize
 
 
@@ -145,6 +144,20 @@ def test_cli_keeps_earlier_runs_in_summary(tmp_path):
     assert {"clino2d_s1", "clino3d_s1"} <= set(summary)
 
 
+OFFSET_10MM = ["--payload-offset-mm", "0", "0", "10"]
+
+
+def test_cli_payload_offset_reaches_the_model_and_the_result_name(tmp_path):
+    main(["--mode", "clino3d", "--minutes", "0.05", "--seed", "1", "--out", str(tmp_path), *OFFSET_10MM])
+    name = "clino3d_s1_off0_0_10mm"  # its own entry, so it never replaces clino3d_s1
+    meta = json.loads(str(np.load(tmp_path / (name + ".npz"))["meta"]))
+    assert meta["params"]["payload_offset"] == pytest.approx([0.0, 0.0, 0.010])
+    entry = json.loads((tmp_path / "summary.json").read_text())[name]
+    # Off the axis intersection the sample feels the frames' own acceleration (~3e-4 g here,
+    # about 1e-16 g if the offset were dropped on the way to the model).
+    assert entry["extra_accel_max_g"] > 1e-4
+
+
 @pytest.mark.slow
 @pytest.mark.parametrize("seed", [1, 2, 3])
 def test_random_mode_simulates_microgravity(seed):
@@ -158,8 +171,12 @@ def test_random_mode_simulates_microgravity(seed):
 
 @pytest.mark.slow
 def test_extra_accel_with_offset_payload(tmp_path):
-    p = MachineParams(payload_offset=(0.0, 0.0, 0.010))
-    log = simulate("random", minutes=10.0, seed=1, params=p)
-    mx, rms = extra_accel(log.acc_sample, log.g_sample)
-    (tmp_path / "extra.json").write_text(json.dumps({"max_g": mx, "rms_g": rms}))
+    # PLAN 8.3: offset 10 mm, random, 10 min -> max and RMS of |acc + g_s| reported only in
+    # summary.json, no threshold. The same run for results/:
+    #   python -m sim.run --mode random --minutes 10 --seed 1 --payload-offset-mm 0 0 10
+    main(["--mode", "random", "--minutes", "10", "--seed", "1", "--out", str(tmp_path), *OFFSET_10MM])
+    entry = json.loads((tmp_path / "summary.json").read_text())["random_s1_off0_0_10mm"]
+    mx, rms = entry["extra_accel_max_g"], entry["extra_accel_rms_g"]
     assert np.isfinite(mx) and np.isfinite(rms)
+    # Not a threshold, only proof that the offset reached the model (about 1.6e-3 g measured).
+    assert mx > 1e-4 and 0.0 < rms <= mx
