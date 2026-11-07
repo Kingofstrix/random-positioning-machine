@@ -1,6 +1,6 @@
 """How good is the simulated microgravity? Streaming metrics over a run.
 
-Two numbers decide (see docs/interfaces.md, "Acceptance metrics"):
+Two numbers decide (the acceptance criteria are in simulation/jannik/docs/api.md):
 
 - **Residual gravity**: the norm of the time-averaged gravity vector in the
   sample frame, in g. Perfect averaging gives 0.
@@ -56,7 +56,12 @@ def cell_index(g: "tuple[float, float, float]") -> int:
 
 
 class GravityStats:
-    """Time-weighted accumulator for gravity samples in the sample frame."""
+    """Time-weighted accumulator for gravity samples in the sample frame.
+
+    The Pico has 32-bit floats: adding 0.1 s to a plain running sum loses
+    about a second per hour. Time and vector sums therefore use compensated
+    (Kahan) summation; the coverage cells, which only feed a coarse ratio, do not.
+    """
 
     def __init__(self) -> None:
         self.reset()
@@ -66,14 +71,28 @@ class GravityStats:
         self.sum_x = 0.0
         self.sum_y = 0.0
         self.sum_z = 0.0
+        self._carry = [0.0, 0.0, 0.0, 0.0]  # lost low-order parts of the four sums
         self.cell_time = [0.0] * N_CELLS
 
     def add(self, g: "tuple[float, float, float]", dt: float) -> None:
         """Record that gravity pointed along ``g`` for ``dt`` seconds."""
-        self.total_time += dt
-        self.sum_x += g[0] * dt
-        self.sum_y += g[1] * dt
-        self.sum_z += g[2] * dt
+        carry = self._carry
+        y = dt - carry[0]
+        s = self.total_time + y
+        carry[0] = (s - self.total_time) - y
+        self.total_time = s
+        y = g[0] * dt - carry[1]
+        s = self.sum_x + y
+        carry[1] = (s - self.sum_x) - y
+        self.sum_x = s
+        y = g[1] * dt - carry[2]
+        s = self.sum_y + y
+        carry[2] = (s - self.sum_y) - y
+        self.sum_y = s
+        y = g[2] * dt - carry[3]
+        s = self.sum_z + y
+        carry[3] = (s - self.sum_z) - y
+        self.sum_z = s
         self.cell_time[cell_index(g)] += dt
 
     def mean_vector(self) -> "tuple[float, float, float]":
