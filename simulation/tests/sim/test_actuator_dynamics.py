@@ -6,6 +6,7 @@ import pytest
 
 from sim.machine import SimMachine
 from sim.params import MachineParams
+from sim.servo_model import torque
 
 
 @pytest.fixture
@@ -19,6 +20,27 @@ def test_saturated_pulse_reaches_noload_speed(m):
     w = m.state()["w_outer"]
     # Gravity torque on the balanced frame is small; friction takes a few percent.
     assert w == pytest.approx(p.omega0 / p.gear_ratio, rel=0.05)
+
+
+# (u, omega/omega0): on the DC-motor line, and reversals where only the force clamp holds tau.
+TORQUE_POINTS = [(1.0, 0.0), (1.0, 0.5), (0.5, 0.2), (-0.7, -0.3), (0.0, 0.4),
+                 (1.0, -0.5), (1.0, -1.0), (-1.0, 1.0)]
+
+
+@pytest.mark.parametrize("axis", ["outer", "inner"])
+@pytest.mark.parametrize("u, frac", TORQUE_POINTS)
+def test_actuator_realises_servo_torque_curve(m, axis, u, frac):
+    # PLAN A6: the velocity actuator must give exactly servo_model.torque, slope kv and the
+    # +-tau_stall clamp included, at any shaft speed (not just at stall or no load).
+    p = m.params
+    mdl, d = m.model, m.data
+    omega = frac * p.omega0                       # servo shaft speed
+    d.qvel[mdl.jnt_dofadr[mdl.joint(axis).id]] = omega / p.gear_ratio
+    d.qvel[mdl.jnt_dofadr[mdl.joint(axis + "_pinion").id]] = -omega
+    d.ctrl[m._act[axis]] = u * p.omega0
+    mujoco.mj_forward(mdl, d)
+    assert d.actuator_force[m._act[axis]] == pytest.approx(torque(u, omega, p), abs=1e-6)
+    assert abs(d.actuator_force[m._act[axis]]) <= p.servo_stall_torque + 1e-9
 
 
 def test_stalled_joint_gives_stall_torque():
