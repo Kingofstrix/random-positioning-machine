@@ -1,6 +1,6 @@
 """End-to-end checks of controller + plant, including the acceptance criteria.
 
-The criteria themselves are defined in docs/interfaces.md. The testing team
+The criteria themselves are defined in docs/api.md. The testing team
 owns the formal acceptance tests in testing/; these are the simulation team's
 own guard rails so a change that breaks the criteria fails here first.
 """

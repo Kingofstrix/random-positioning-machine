@@ -17,9 +17,21 @@ From `rpm-sim compare` (25 runs of 10 min per strategy, see [`results/`](../../r
 
 | Strategy | median residual | worst residual | coverage |
 |---|---:|---:|---|
-| `clinostat` | 0.0015 g | 0.0021 g | 0.58–2.04 |
-| `random_setpoints` | 0.036 g | 0.080 g | 0.40–2.23 |
-| `random_walk` | 0.042 g | 0.077 g | 0.41–2.32 |
+| `clinostat` | 0.0011 g | 0.0030 g | 0.60–2.10 |
+| `random_setpoints` | 0.041 g | 0.094 g | 0.44–2.33 |
+| `random_walk` | 0.042 g | 0.098 g | 0.41–2.40 |
+
+Speed matters less than the strategy (30 runs each: envelope corners plus nominal, seeds 1–5):
+
+| max speed | `clinostat` worst | `random_walk` worst |
+|---:|---:|---:|
+| 30 °/s | 0.011 g | 0.19 g |
+| 60 °/s | 0.0046 g | 0.10 g |
+| 90 °/s | 0.0026 g | 0.090 g |
+| 120 °/s | 0.0030 g | 0.098 g |
+
+So the clinostat would also pass at 60 °/s, half the servo's maximum, if the team prefers to
+spare the gears; random motion fails at every speed.
 
 1. **Random motion averages slowly.** Full revolutions at constant speed cancel almost exactly
    every turn; random speed and direction changes leave a residual that shrinks only slowly

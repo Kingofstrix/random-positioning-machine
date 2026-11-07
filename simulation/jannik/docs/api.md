@@ -72,4 +72,4 @@ that, the geometry gives the directions along the inner axis about twice their s
 
 Each point is `[pulse_us, axis_deg_s]`, signed by the right-hand rule. Points with `0.0` mark the
 dead band, the drive stops in its middle. Speeds must be monotone in pulse width and reach both
-directions. Without the file the firmware uses datasheet values (about 150 deg/s at full speed).
+directions. Without the file the firmware uses the PLAN 2.5 assumptions (83 rpm, about 125 deg/s at full speed).

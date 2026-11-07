@@ -117,7 +117,7 @@ def write_report(summaries: list[StrategySummary], out_dir: Path, duration_s: fl
         f"{runs} runs per strategy (nominal servo model plus the four corners of the error "
         "envelope: +-20 % speed, +-15 us dead-band shift, 3 % noise, several seeds).",
         "",
-        f"Criteria (docs/interfaces.md): residual gravity < {RESIDUAL_LIMIT_G} g in *every* run, "
+        f"Criteria (docs/api.md): residual gravity < {RESIDUAL_LIMIT_G} g in *every* run, "
         f"coverage ratio of every cell within [{COVERAGE_LIMITS[0]}, {COVERAGE_LIMITS[1]}].",
         "",
         "| Strategy | median residual [g] | worst residual [g] | coverage min..max | pass |",
