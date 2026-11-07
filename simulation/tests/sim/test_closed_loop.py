@@ -7,9 +7,9 @@ import numpy as np
 import pytest
 
 from rpmcore.config import CONFIG
-from sim.metrics import extra_accel, residual_g, speed_tracking, sphere_coverage
+from sim.metrics import G0, extra_accel, residual_g, speed_tracking, sphere_coverage, windowed_residual
 from sim.params import MachineParams
-from sim.run import main, simulate
+from sim.run import SimLog, main, simulate, summarize
 
 
 def cfg_with(**random_overrides):
@@ -104,6 +104,33 @@ def test_cli_writes_npz_and_summary(tmp_path):
     summary = json.loads((tmp_path / "summary.json").read_text())
     entry = summary["clino3d_s2"]
     assert {"residual_g", "coverage", "extra_accel_max_g", "tracking_rms_dps"} <= set(entry)
+
+
+def synthetic_log(n=300, hz=2.0):
+    """A SimLog without physics: random gravity directions, different errors per axis."""
+    rng = np.random.default_rng(0)
+    g = G0 * rng.normal(size=(n, 3))
+    cmd = np.zeros((n, 2))
+    w = np.tile([1.0, 3.0], (n, 1))  # inner 1 deg/s off, outer 3 deg/s off
+    return SimLog(t=np.arange(1, n + 1) / hz, q_outer=np.zeros(n), q_inner=np.zeros(n),
+                  w_dps=w, cmd_dps=cmd, pulses=np.zeros((n, 2), int), g_sample=g,
+                  acc_sample=-g, meta={"log_hz": hz})
+
+
+def test_summary_keys_and_windows_follow_meta():
+    log = synthetic_log()  # 150 s at 2 Hz: two 60 s windows, no 600 s window
+    out = summarize(log)
+    assert out["tracking_rms_dps"] == pytest.approx({"inner": 1.0, "outer": 3.0})
+    med, p95 = windowed_residual(log.g_sample, 60, log.meta["log_hz"])
+    assert out["residual_g_60s"] == pytest.approx({"median": med, "p95": p95})
+    assert "residual_g_600s" not in out
+
+
+def test_cli_keeps_earlier_runs_in_summary(tmp_path):
+    main(["--mode", "clino2d", "--minutes", "0.02", "--seed", "1", "--out", str(tmp_path)])
+    main(["--mode", "clino3d", "--minutes", "0.02", "--seed", "1", "--out", str(tmp_path)])
+    summary = json.loads((tmp_path / "summary.json").read_text())
+    assert {"clino2d_s1", "clino3d_s1"} <= set(summary)
 
 
 @pytest.mark.slow
