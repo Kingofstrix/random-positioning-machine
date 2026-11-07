@@ -50,6 +50,10 @@ class SimMachine:
             "tau_inner": float(s[self._sens["tau_inner"]][0]),
         }
 
+    def sample_pose(self) -> tuple[np.ndarray, np.ndarray]:
+        """World position (m) and rotation matrix of the sample site after the last forward pass."""
+        return self.data.site_xpos[self._site].copy(), self.data.site_xmat[self._site].reshape(3, 3).copy()
+
     @property
     def q(self) -> np.ndarray:
         return np.array([self.data.qpos[self.model.jnt_qposadr[self.model.joint(n).id]] for n in ("inner", "outer")])
