@@ -3,926 +3,508 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="Control page for the DHBW Random Positioning Machine: start and stop experiments and export results to Excel.">
-<title>RPM Experiment Hub</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<title>RPM Control</title>
+<meta name="claude:viewport-fit-sides" content="cover">
 <style>
-[hidden]{display:none!important}
-/* Layout: one-screen landscape hub. Experiment = machine stage with a control dock (left) + results (right). Expert mode adds live values and a serial log in place. */
-:root{
-  --bg:#EEF1F4;--surface:#FFFFFF;--soft:#E3E8EE;--ink:#15202B;--muted:#566472;--line:#D2D9E0;
-  --accent:#2D56D8;--on-strong:#FFFFFF;--amber:#B35A0A;--ok:#1C8656;--danger:#C42B2B;
-  --tint:#E6ECFB;--shade:rgba(21,32,43,.28);
-  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
-  --f-display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
-  --f-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+/* Layout: one instrument panel. Summary row (controls + gravity readout), then the
+   initialization chart, then the machine log. Offline: no web fonts, no libraries. */
+:root {
+  --bg: #eef1f4; --panel: #ffffff; --ink: #17212b; --muted: #5a6977; --line: #d6dde4;
+  --accent: #2350c4; --accent-ink: #ffffff; --cov: #a8620a;
+  --ok: #1d7a4c; --warn: #a8620a; --danger: #bf352b; --grid: #e7ecf0;
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-num: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --radius: 10px;
+  color-scheme: light;
 }
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#0E141A;--surface:#161F28;--soft:#1F2A35;--ink:#E3E9EF;--muted:#93A1AE;--line:#2A3642;
-  --accent:#7B97FF;--on-strong:#0E141A;--amber:#F0A04B;--ok:#45BE87;--danger:#F0645F;--tint:#1C2640;--shade:rgba(0,0,0,.55);color-scheme:dark}}
-:root[data-theme="dark"]{
-  --bg:#0E141A;--surface:#161F28;--soft:#1F2A35;--ink:#E3E9EF;--muted:#93A1AE;--line:#2A3642;
-  --accent:#7B97FF;--on-strong:#0E141A;--amber:#F0A04B;--ok:#45BE87;--danger:#F0645F;--tint:#1C2640;--shade:rgba(0,0,0,.55);color-scheme:dark}
-*{box-sizing:border-box}
-html,body{height:100%}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.45;overflow:hidden}
-button,select,input,textarea{font:inherit;color:inherit}
-:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
-h1,h2,h3,p{margin:0}
-.app{height:100%;display:flex;flex-direction:column;gap:12px;max-width:1600px;margin:0 auto;
-  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px 14px}
-
-/* top bar */
-.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px 12px}
-.bar h1{font-size:17px;font-weight:600;white-space:nowrap}
-.tabs{display:flex;gap:2px;background:var(--soft);border-radius:9px;padding:3px}
-.tab{border:0;background:none;border-radius:7px;padding:5px 14px;cursor:pointer;font-weight:500;font-size:15px;color:var(--muted)}
-.tab[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px var(--shade)}
-.spacer{flex:1}
-.conn{display:flex;align-items:center;gap:8px;font-size:15px}
-.dot{width:10px;height:10px;border-radius:50%;background:var(--amber);flex:none}
-.conn[data-on="1"] .dot{background:var(--ok)}
-.btn{border:1px solid var(--line);background:var(--soft);border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:500;font-size:15px}
-.btn:hover{border-color:var(--muted)}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-strong)}
-.switch{display:flex;align-items:center;gap:8px;background:none;border:0;padding:2px;cursor:pointer;font-size:15px}
-.track{width:38px;height:22px;border-radius:11px;background:var(--line);position:relative;flex:none}
-.track::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--surface);transition:transform .2s}
-.switch[aria-checked="true"] .track{background:var(--accent)}
-.switch[aria-checked="true"] .track::after{transform:translateX(16px)}
-.note{font-size:14px;background:var(--soft);border:1px solid var(--amber);border-radius:8px;padding:6px 10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.link{border:0;background:none;color:var(--accent);cursor:pointer;padding:0;font-size:13px;text-decoration:underline}
-
-.view{flex:1;min-height:0}
-.view[hidden]{display:none!important}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;min-height:0;min-width:0;display:flex;flex-direction:column}
-.head{display:flex;align-items:center;gap:8px}
-.head h2{font-size:17px;font-weight:600}
-.head .end{margin-left:auto;display:flex;gap:8px;align-items:center}
-.q{width:24px;height:24px;border-radius:50%;border:1px solid var(--line);background:var(--soft);cursor:pointer;font-weight:600;font-size:14px;line-height:1;padding:0;flex:none;color:var(--muted)}
-.q:hover{color:var(--ink);border-color:var(--muted)}
-.label{font-family:var(--f-display);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
-.canvas-wrap{position:relative;flex:1;min-height:200px}
-.canvas-wrap canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
-.tag{position:absolute;left:14px;bottom:10px;background:var(--soft);border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:13px;font-weight:500}
-
-/* ---------- experiment ---------- */
-#view-experiment{display:grid;grid-template-columns:minmax(360px,1fr) minmax(0,1.45fr);gap:12px}
-.stage{overflow:auto}
-.stage-body{flex:1;display:flex;flex-direction:column;justify-content:center;padding:8px 20px}
-.big-state{font-size:44px}
-.run-sample{font-size:17px;margin-top:6px}
-.run-sample:empty{display:none}
-.stage-top{display:flex;align-items:center;gap:12px;padding:14px 20px 0}
-.state{font-size:30px;font-weight:600;line-height:1.1}
-.state[data-s="run"]{color:var(--ok)}
-.state[data-s="slow"]{color:var(--amber)}
-.timer{font-size:15px;color:var(--muted);font-variant-numeric:tabular-nums}
-.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-.chips[hidden]{display:none}
-.chip{font-family:var(--f-mono);font-size:13px;background:var(--soft);border-radius:6px;padding:2px 8px;font-variant-numeric:tabular-nums}
-.stage-top .end{margin-left:auto}
-.dock{border-top:1px solid var(--line);padding:16px 20px 18px;display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
-.field{display:flex;flex-direction:column;gap:4px;min-width:0}
-.field .head{gap:6px}
-.field input{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);min-width:0}
-.seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid var(--line);border-radius:9px;overflow:hidden}
-.seg button{border:0;border-right:1px solid var(--line);background:var(--surface);padding:5px 4px;cursor:pointer;font-size:15px;font-weight:500;display:flex;flex-direction:column;align-items:center;line-height:1.2}
-.seg button:last-child{border-right:0}
-.seg button small{font-size:12px;color:var(--muted);font-weight:400}
-.seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-strong)}
-.seg button[aria-pressed="true"] small{color:var(--on-strong)}
-.seg button:disabled{cursor:not-allowed;color:var(--muted)}
-.actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
-.actions .go{grid-column:1/-1}
-.go,.stop{min-height:56px;border-radius:10px;font-weight:600;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.15}
-.go{border:0;background:var(--ok);color:var(--on-strong);font-size:19px}
-.stop{border:2px solid var(--ink);background:var(--surface);color:var(--ink);font-size:16px}
-.estop{border-color:var(--danger);background:var(--danger);color:var(--on-strong)}
-.stop small{font-size:12px;font-weight:500;opacity:.85}
-button:disabled{opacity:.45;cursor:not-allowed}
-#msg{grid-column:1/-1;font-size:14px;color:var(--danger)}
-#msg:empty{display:none}
-
-.side{display:flex;flex-direction:column;gap:12px;min-height:0}
-.side .card{padding:14px;gap:10px}
-.results{flex:1 1 60%}
-.serial{flex:1 1 40%}
-.serial[hidden]{display:none}
-.list{flex:1;min-height:0;overflow:auto;border:1px solid var(--line);border-radius:8px}
-table{border-collapse:collapse;width:100%;font-size:14px}
-th{position:sticky;top:0;background:var(--soft);text-align:left;font-weight:600;padding:6px 8px;white-space:nowrap;z-index:1}
-td{padding:5px 8px;border-top:1px solid var(--line);vertical-align:middle;white-space:nowrap}
-td.num{text-align:right;font-variant-numeric:tabular-nums}
-td.sid{font-family:var(--f-mono);font-size:13px}
-td input{width:100%;min-width:7em;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);font-size:14px}
-tr.live td{background:var(--tint)}
-.ex{font-size:11px;padding:0 6px;border-radius:999px;background:var(--soft);color:var(--muted);margin-left:4px}
-.del{border:0;background:none;color:var(--muted);cursor:pointer;font-size:13px;padding:2px 4px;text-decoration:underline}
-.colx{display:none}
-.expert-on .colx{display:table-cell}
-.foot{display:flex;gap:8px 14px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--muted)}
-.log{flex:1;min-height:80px;font-family:var(--f-mono);font-size:12.5px;background:var(--soft);border-radius:8px;padding:8px 10px;overflow:auto;white-space:pre-wrap;word-break:break-all;margin:0}
-.log .tx{color:var(--accent)} .log .err{color:var(--danger)}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.row input[type=text]{flex:1;min-width:0;font-family:var(--f-mono);font-size:14px;padding:5px 9px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
-select{padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:14px}
-.hint{font-size:13px;color:var(--muted)}
-code{font-family:var(--f-mono);font-size:13px}
-
-/* ---------- the machine ---------- */
-#view-machine{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:12px}
-.show{overflow:hidden;background:linear-gradient(180deg,var(--tint),var(--surface) 70%)}
-.show-head{padding:22px 24px 0;display:flex;flex-direction:column;gap:6px}
-.show-head h2{font-size:30px;font-weight:600;line-height:1.1;text-wrap:balance}
-.show-head p{font-size:17px;color:var(--muted);max-width:40ch}
-.show .cap{padding:0 24px 16px;font-size:13px;color:var(--muted)}
-.info{display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:12px;min-height:0}
-.info .card{padding:18px 20px;gap:12px;overflow:auto}
-.how3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
-.how3 figure{margin:0;display:flex;flex-direction:column;gap:8px}
-.ico{width:64px;height:64px;border-radius:16px;background:var(--soft);display:grid;place-items:center}
-.ico svg{width:46px;height:46px}
-.i-seed{fill:var(--ok)}
-.i-line{fill:none;stroke:var(--ink);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
-.i-faint{stroke:var(--muted)}
-.how3 b{font-size:16px}
-.how3 p{font-size:15px;color:var(--muted)}
-.pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;min-height:0}
-.pair ol{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:6px;font-size:15px}
-dl.kv{margin:0;display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:15px}
-dl.kv dt{color:var(--muted)}
-dl.kv dd{margin:0}
-.nd{color:var(--amber)}
-.about{font-size:14px;color:var(--muted)}
-.about a{color:inherit}
-
-/* help popovers */
-[popover]{margin:auto;width:min(440px,calc(100vw - 32px));border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);padding:16px 18px;box-shadow:0 16px 48px var(--shade)}
-[popover]::backdrop{background:var(--shade)}
-[popover] h3{font-size:17px;font-weight:600;margin-bottom:8px}
-[popover] p,[popover] li{font-size:15px}
-[popover] p+p{margin-top:8px}
-[popover] ol{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:4px}
-[popover] .row{margin-top:12px}
-#copyBox{width:100%;font-family:var(--f-mono);font-size:12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);padding:6px;margin-top:8px}
-
-@media (max-width:1000px){
-  html,body{height:auto}
-  body{overflow:auto}
-  .app{height:auto}
-  #view-experiment,#view-machine,.pair{grid-template-columns:minmax(0,1fr)}
-  .canvas-wrap{flex:none;min-height:0;aspect-ratio:4/3}
-  .list{max-height:360px}
-  .serial{min-height:300px}
-  .info{grid-template-rows:none}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1317; --panel: #151c22; --ink: #e3e9ef; --muted: #8b99a6; --line: #26313a;
+    --accent: #7c9fff; --accent-ink: #0e1317; --cov: #e1a24c;
+    --ok: #4bc287; --warn: #e1a24c; --danger: #f06a5e; --grid: #1e272e;
+    color-scheme: dark;
+  }
 }
-@media (max-width:560px){
-  .dock{grid-template-columns:minmax(0,1fr)}
-  .actions{grid-template-columns:minmax(0,1fr)}
-  .how3{grid-template-columns:minmax(0,1fr)}
+:root[data-theme="dark"] {
+  --bg: #0e1317; --panel: #151c22; --ink: #e3e9ef; --muted: #8b99a6; --line: #26313a;
+  --accent: #7c9fff; --accent-ink: #0e1317; --cov: #e1a24c;
+  --ok: #4bc287; --warn: #e1a24c; --danger: #f06a5e; --grid: #1e272e;
+  color-scheme: dark;
 }
-@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font-ui);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px 32px;
+}
+.wrap { max-width: 1080px; margin: 0 auto; display: grid; gap: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+h1 { font-size: 18px; margin: 0; letter-spacing: .01em; }
+h1 small { font-weight: 400; color: var(--muted); margin-left: 6px; }
+h2 { font-size: 12px; margin: 0; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+.spacer { flex: 1; }
+.pill {
+  display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--panel); font-size: 13px; white-space: nowrap;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.pill[data-tone="ok"] .dot { background: var(--ok); }
+.pill[data-tone="warn"] .dot { background: var(--warn); }
+.pill[data-tone="danger"] .dot { background: var(--danger); }
+.notice {
+  border: 1px solid var(--line); border-left: 3px solid var(--warn); background: var(--panel);
+  padding: 10px 14px; border-radius: 6px; color: var(--ink);
+}
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; min-width: 0; }
+.top { display: grid; grid-template-columns: minmax(0, 280px) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 720px) { .top { grid-template-columns: minmax(0, 1fr); } }
+.controls { display: grid; gap: 10px; align-content: start; }
+.state { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.state b { font-size: 20px; letter-spacing: .02em; }
+.timer { font: 500 20px var(--font-num); font-variant-numeric: tabular-nums; }
+button {
+  font: 600 15px var(--font-ui); border-radius: 8px; padding: 12px 14px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+}
+button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.danger { color: var(--danger); border-color: var(--danger); background: transparent; font-size: 14px; padding: 9px 12px; }
+.small { font-size: 13px; font-weight: 500; padding: 6px 10px; }
+.hint { color: var(--muted); font-size: 12px; margin: 0; }
+kbd { font: 11px var(--font-num); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.readout { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 560px) { .readout { grid-template-columns: minmax(0, 1fr); } }
+.metric { display: grid; gap: 2px; align-content: start; }
+.metric .val { font: 500 34px/1.1 var(--font-num); font-variant-numeric: tabular-nums; }
+.metric .val small { font-size: 16px; color: var(--muted); margin-left: 4px; }
+.metric .sub { color: var(--muted); font-size: 12px; }
+.ready { font-size: 15px; font-weight: 600; }
+.ready[data-tone="ok"] { color: var(--ok); }
+.sw-g { color: var(--accent); } .sw-c { color: var(--cov); }
+.chart-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 8px; }
+.legend { display: flex; gap: 14px; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 14px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 5px; }
+.legend i.dash { border-top-style: dashed; }
+canvas { display: block; width: 100%; height: 320px; }
+.logbar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 8px; }
+.logbar label { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; }
+#log {
+  font: 12px/1.5 var(--font-num); height: 220px; overflow: auto; margin: 0; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--bg); white-space: pre-wrap; word-break: break-word;
+}
+#log .out { color: var(--accent); } #log .err { color: var(--danger); } #log .sys { color: var(--muted); }
+select { font: 13px var(--font-ui); padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
 <body>
-<div class="app" id="app">
-  <header class="bar">
-    <h1>Random Positioning Machine</h1>
-    <nav class="tabs" role="tablist" aria-label="Pages">
-      <button class="tab" role="tab" id="tab-experiment" data-view="experiment" aria-selected="true">Experiment</button>
-      <button class="tab" role="tab" id="tab-machine" data-view="machine" aria-selected="false">The machine</button>
-    </nav>
-    <div class="spacer"></div>
-    <div class="conn" id="conn" data-on="0" role="status" aria-live="polite"><span class="dot" aria-hidden="true"></span><span id="connText">Practice mode, no machine plugged in</span></div>
-    <button class="btn primary" id="btnConnect" type="button">Connect machine</button>
-    <button class="switch" id="expertSwitch" type="button" role="switch" aria-checked="false"><span class="track" aria-hidden="true"></span><span>Expert mode</span></button>
+<div class="wrap">
+  <header>
+    <h1>RPM Control <small>Random Positioning Machine</small></h1>
+    <span class="spacer"></span>
+    <label id="speedWrap" class="hint" hidden>Simulation speed
+      <select id="speed"><option value="1">1×</option><option value="20" selected>20×</option><option value="60">60×</option></select>
+    </label>
+    <span class="pill" id="conn" data-tone="warn"><span class="dot"></span><span id="connText">Looking for the launcher…</span></span>
   </header>
-  <div class="note" id="connNote" hidden><span id="connNoteText"></span><button class="btn" id="btnUseSim" type="button">Show a simulated machine</button><button class="link" id="btnNoteClose" type="button">Close</button></div>
 
-  <!-- EXPERIMENT -->
-  <main class="view" id="view-experiment" role="tabpanel" aria-labelledby="tab-experiment">
-    <section class="card stage" aria-label="Machine and controls">
-      <div class="stage-top">
-        <h2 style="font-size:17px;font-weight:600">Current run</h2>
-        <div class="end"><button class="q" popovertarget="help-steps" aria-label="How to run an experiment">?</button></div>
-      </div>
-      <div class="stage-body">
-        <div role="status" aria-live="polite">
-          <div class="state big-state" id="state" data-s="stop">Stopped</div>
-          <div class="timer" id="timer">Ready</div>
-          <div class="run-sample" id="runSample"></div>
-          <div class="chips" id="liveChips" hidden>
-            <span class="chip" id="xState">state –</span>
-            <span class="chip" id="xOuter">outer –</span>
-            <span class="chip" id="xInner">inner –</span>
-            <span class="chip" id="xTime">t –</span>
-            <span class="chip" id="xLog">log 0 rows</span>
-          </div>
-        </div>
-      </div>
-      <div class="dock">
-        <div class="field">
-          <label class="label" for="sampleInput">Sample</label>
-          <input id="sampleInput" type="text" placeholder="e.g. Wheat seeds, tray A" autocomplete="off">
-        </div>
-        <div class="field">
-          <div class="head"><span class="label" id="gLabel">Gravity</span><button class="q" popovertarget="help-gravity" aria-label="About the gravity levels">?</button></div>
-          <div class="seg" role="group" aria-labelledby="gLabel">
-            <button type="button" id="gMicro" aria-pressed="true">Weightless<small>like in space</small></button>
-            <button type="button" id="gMoon" aria-pressed="false" disabled>Moon<small>later</small></button>
-            <button type="button" id="gMars" aria-pressed="false" disabled>Mars<small>later</small></button>
-          </div>
-        </div>
-        <div class="actions">
-          <button class="go" id="btnStart" type="button">Start turning</button>
-          <button class="stop" id="btnStop" type="button">Stop gently<small>slows down</small></button>
-          <button class="stop estop" id="btnEstop" type="button">Emergency stop<small>at once · Esc</small></button>
-        </div>
-        <p id="msg" role="alert"></p>
-      </div>
+  <div class="notice" id="notice" hidden></div>
+
+  <div class="top">
+    <section class="panel controls" aria-label="Controls">
+      <div class="state"><b id="state">–</b><span class="timer" id="timer">0:00</span></div>
+      <button class="primary" id="btnStart" disabled>Start</button>
+      <button id="btnStop" disabled>Stop</button>
+      <button class="danger" id="btnEstop" disabled>Emergency stop</button>
+      <p class="hint">Stop slows both rings down gently. Emergency stop (<kbd>Esc</kbd>) switches the motors off at once.</p>
     </section>
 
-    <div class="side">
-      <section class="card results" aria-labelledby="rTitle">
-        <div class="head"><h2 id="rTitle">Results</h2><button class="q" popovertarget="help-results" aria-label="About the results">?</button>
-          <div class="end"><button class="btn" id="btnExport" type="button" popovertarget="pop-export">Export for Excel</button></div></div>
-        <div class="list">
-          <table id="runsTable">
-            <thead><tr><th>Date</th><th>ID</th><th>Sample</th><th>Notes</th><th>Min.</th><th>Ended</th><th class="colx">Mode</th><th><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Delete</span></th></tr></thead>
-            <tbody id="runsBody"></tbody>
-          </table>
+    <section class="panel" aria-label="Gravity">
+      <div class="readout">
+        <div class="metric">
+          <h2>Average gravity</h2>
+          <div class="val sw-g"><span id="gres">–</span><small>g</small></div>
+          <div class="sub">on the sample since Start. Target below 0.05 g.</div>
         </div>
-        <div class="foot">
-          <span>Saved only in this browser. Export after each experiment.</span>
-          <button class="link" id="btnRemoveExamples" type="button">Remove example rows</button>
+        <div class="metric">
+          <h2>Orientations visited</h2>
+          <div class="val sw-c"><span id="cov">–</span><small>%</small></div>
+          <div class="sub">of 200 directions. Target 90 %.</div>
         </div>
-      </section>
-
-      <section class="card serial" id="serialCard" aria-labelledby="sTitle" hidden>
-        <div class="head"><h2 id="sTitle">Machine messages</h2>
-          <div class="end"><label class="hint"><input type="checkbox" id="showPolls"> status replies</label>
-            <label class="hint" for="baud">Baud</label><select id="baud"><option>9600</option><option>57600</option><option selected>115200</option></select>
-            <button class="btn" id="btnClearLog" type="button">Clear</button></div></div>
-        <pre class="log" id="log"></pre>
-        <form class="row" id="cmdForm" autocomplete="off">
-          <input id="cmdInput" type="text" spellcheck="false" placeholder="status, help, start, stop, estop" aria-label="Command">
-          <button class="btn" id="btnSend" type="submit">Send</button>
-        </form>
-        <p class="hint">Commands and replies as in the simulation team's firmware code (rpmcore, branch sim/chore/version-bqckf1sh). Baud rate not decided yet.</p>
-      </section>
-    </div>
-  </main>
-
-  <!-- THE MACHINE -->
-  <section class="view" id="view-machine" role="tabpanel" aria-labelledby="tab-machine" hidden>
-    <div class="card show">
-      <div class="show-head">
-        <span class="label">DHBW Ravensburg · student project</span>
-        <h2>Grow plants and cells almost as if in space</h2>
-        <p>A small machine that keeps turning a sample, so gravity can't pull it the same way for long.</p>
+        <div class="metric">
+          <h2>Initialization</h2>
+          <div class="ready" id="ready">Not started</div>
+          <div class="sub" id="readySub">Press Start. The machine needs time to turn the sample through every direction.</div>
+        </div>
       </div>
-      <div class="canvas-wrap"><canvas id="showCanvas" role="img" aria-label="3D drawing of the machine, slowly turning."></canvas></div>
-      <p class="cap">The drawing shows the planned machine. The real one may look a little different.</p>
-    </div>
+    </section>
+  </div>
 
-    <div class="info">
-      <section class="card" aria-labelledby="howTitle">
-        <h2 id="howTitle" style="font-size:19px;font-weight:600">How it works</h2>
-        <div class="how3">
-          <figure>
-            <div class="ico"><svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="22" r="10" class="i-seed"/><path d="M32 36v20M25 49l7 7 7-7" class="i-line"/></svg></div>
-            <b>Gravity pulls one way</b>
-            <p>On Earth, gravity always pulls down. Roots grow down, shoots grow up.</p>
-          </figure>
-          <figure>
-            <div class="ico"><svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="9" class="i-seed"/><path d="M32 11a21 21 0 1 1-18.2 10.5" class="i-line"/><path d="M9 15l4.8 6.5 7-3.2" class="i-line"/></svg></div>
-            <b>The machine keeps turning</b>
-            <p>Two rings turn the sample slowly in all directions, without stopping.</p>
-          </figure>
-          <figure>
-            <div class="ico"><svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="9" class="i-seed"/><path d="M32 4v12M28 12l4 4 4-4M32 60V48M28 52l4-4 4 4M4 32h12M12 28l4 4-4 4M60 32H48M52 28l-4 4 4 4" class="i-line i-faint"/></svg></div>
-            <b>The pulls even out</b>
-            <p>Gravity now pulls from every side in turn. Over time this feels almost like being weightless.</p>
-          </figure>
-        </div>
-      </section>
-
-      <div class="pair">
-        <section class="card" aria-labelledby="runTitle">
-          <h2 id="runTitle" style="font-size:17px;font-weight:600">Run an experiment</h2>
-          <ol>
-            <li>Place your sample in the sample holder.</li>
-            <li>Connect the machine and press <strong>Connect machine</strong>.</li>
-            <li>Type your sample's name and press <strong>Start turning</strong>.</li>
-            <li>Press <strong>Stop gently</strong> when you are done. Wait for <strong>Stopped</strong>.</li>
-            <li>Press <strong>Export for Excel</strong> to keep your results.</li>
-          </ol>
-        </section>
-        <section class="card" aria-labelledby="bTitle">
-          <h2 id="bTitle" style="font-size:17px;font-weight:600">Build details</h2>
-          <dl class="kv">
-            <dt>Controller</dt><dd>Arduino Nano</dd>
-            <dt>Motors</dt><dd class="nd">Not decided yet</dd>
-            <dt>Wiring</dt><dd class="nd">Not decided yet</dd>
-            <dt>Measurements</dt><dd class="nd">Not decided yet</dd>
-          </dl>
-          <p class="hint">The hardware team fills these in once the build is done.</p>
-        </section>
+  <section class="panel" aria-label="Initialization curve">
+    <div class="chart-head">
+      <h2>Initialization curve</h2>
+      <div class="legend">
+        <span><i class="sw-g"></i>Average gravity (g, log scale)</span>
+        <span><i class="sw-c"></i>Orientations visited (%)</span>
+        <span><i class="dash" style="color: var(--muted)"></i>Target</span>
       </div>
-
-      <p class="about">Machine design based on the Random Positioning Machine by Core Electronics and Unconvengineering (<a href="https://github.com/CoreElectronics/CE-Random-Positioning-Machine" target="_blank" rel="noopener">github.com/CoreElectronics/CE-Random-Positioning-Machine</a>), CC BY-NC-SA 4.0 (free to share and change, not for sale); modified by Mark Schutera, DHBW Ravensburg.</p>
     </div>
+    <canvas id="chart" role="img" aria-label="Average gravity and orientations visited over time"></canvas>
+    <p class="hint">Calculated by the machine from the speeds it commands. The servos give no feedback, so this is an estimate.</p>
+  </section>
+
+  <section class="panel" aria-label="Machine log">
+    <div class="logbar">
+      <h2>Log</h2>
+      <span class="spacer"></span>
+      <label><input type="checkbox" id="showStatus"> Show status replies</label>
+      <button class="small" id="btnCsv">Download run (CSV)</button>
+      <button class="small" id="btnClear">Clear log</button>
+    </div>
+    <pre id="log" aria-live="polite"></pre>
   </section>
 </div>
 
-<!-- help popovers -->
-<div popover id="help-steps">
-  <h3>How to run an experiment</h3>
-  <ol>
-    <li>Place your sample in the sample holder.</li>
-    <li>Connect the machine and press <strong>Connect machine</strong>. Without a machine, the page runs in practice mode.</li>
-    <li>Type your sample's name and press <strong>Start turning</strong>.</li>
-    <li>Press <strong>Stop gently</strong> when you are done. Wait for <strong>Stopped</strong> before you take the sample out.</li>
-    <li>Press <strong>Export for Excel</strong> to keep your results.</li>
-  </ol>
-  <p style="margin-top:10px">More about the machine: see the tab <strong>The machine</strong>.</p>
-  <div class="row"><button class="btn" popovertarget="help-steps" popovertargetaction="hide">Close</button></div>
-</div>
-<div popover id="help-gravity">
-  <h3>Gravity levels</h3>
-  <p><strong>Weightless</strong>: the machine turns the sample so the pull of gravity evens out to almost nothing, like in space.</p>
-  <p><strong>Moon</strong> and <strong>Mars</strong> need a different way of turning. The software team will add them later.</p>
-  <div class="row"><button class="btn" popovertarget="help-gravity" popovertargetaction="hide">Close</button></div>
-</div>
-<div popover id="help-results">
-  <h3>Results</h3>
-  <p>Every time you press Start, a new row appears with its own ID, for example RPM-261107-01. The sample name is filled in with the ID; type over it with your own name if you like. Add notes, for example what you saw.</p>
-  <p>Runs without a machine are marked "practice". Measurements from the machine will be added here once the teams decide what the machine measures.</p>
-  <p>The list is saved only in this browser on this computer, so export it after each experiment.</p>
-  <div class="row"><button class="btn" popovertarget="help-results" popovertargetaction="hide">Close</button></div>
-</div>
-<div popover id="pop-export">
-  <h3>Export for Excel</h3>
-  <div class="row" style="margin-top:0"><label for="csvFormat">Excel language</label>
-    <select id="csvFormat"><option value="de" selected>German</option><option value="en">English</option></select></div>
-  <div class="row">
-    <button class="btn primary" id="btnCopy" type="button">Copy table</button>
-    <button class="btn" id="btnCsv" type="button">Download file</button>
-  </div>
-  <div id="mlogBox" hidden style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
-    <h3 style="font-size:15px;margin-bottom:4px">Machine log (expert)</h3>
-    <p class="hint">One row per second: the ring speeds and motor signals the machine was told to run, from its status replies. These are commanded values, not measurements. <span id="mlogCount"></span></p>
-    <div class="row" style="margin-top:8px">
-      <button class="btn" id="btnCopyLog" type="button">Copy machine log</button>
-      <button class="btn" id="btnCsvLog" type="button">Download machine log</button>
-    </div>
-  </div>
-  <p class="hint" id="copyMsg" role="status" style="margin-top:8px">Copy, then paste into an empty Excel sheet with Ctrl+V or Cmd+V. If the download doesn't work, use Copy.</p>
-  <textarea id="copyBox" rows="4" readonly hidden aria-label="Table as text"></textarea>
-  <div class="row"><button class="btn" popovertarget="pop-export" popovertargetaction="hide">Close</button></div>
-</div>
-
 <script>
-(function () {
-  "use strict";
-  /* true = open with a simulated machine connected and an experiment running (for demos).
-     Keep false on GitHub Pages. A simulated machine can still be started from the connect message. */
-  var PREVIEW_SIMULATED_MACHINE = false;
+"use strict";
+// Targets from docs/PLAN.md §8.3 (provisional until the first real run).
+var TARGET_G = 0.05, TARGET_COV = 0.90;
+var POLL_MS_MACHINE = 500, POLL_MS_SIM = 200, LOG_MAX = 600;
 
-  var DEG = Math.PI / 180;
-  function $(id) { return document.getElementById(id); }
-  function cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
-  function rgba(hex, a) {
-    var h = hex.replace("#", ""); if (h.length === 3) h = h.split("").map(function (c) { return c + c; }).join("");
-    var n = parseInt(h, 16); if (isNaN(n)) return hex;
-    return "rgba(" + ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + a + ")";
-  }
-  var COL = {};
-  function readColors() { ["--surface", "--soft", "--ink", "--muted", "--line", "--accent", "--amber"].forEach(function (k) { COL[k.slice(2)] = cssVar(k); }); }
-  function nowS() { return performance.now() / 1000; }
-  function pad(n) { return (n < 10 ? "0" : "") + n; }
-  function fmtDur(sec) {
-    sec = Math.max(0, Math.floor(sec));
-    var h = Math.floor(sec / 3600), m = Math.floor(sec / 60) % 60, s = sec % 60;
-    return (h ? h + " h " : "") + (h || m ? m + " min " : "") + s + " s";
-  }
+var $ = function (id) { return document.getElementById(id); };
+var run = { samples: [], readyT: null, startedAt: null, id: null };
+var status = {};
+var transport = null;  // { send(line), kind: "launcher" | "sim" }
+var connected = false;
 
-  /* ---------- tabs ---------- */
-  var VIEWS = ["experiment", "machine"];
-  function showView(v) {
-    if (VIEWS.indexOf(v) < 0) v = "experiment";
-    VIEWS.forEach(function (x) { $("view-" + x).hidden = x !== v; $("tab-" + x).setAttribute("aria-selected", x === v ? "true" : "false"); });
-  }
-  document.querySelectorAll(".tab").forEach(function (b) {
-    b.addEventListener("click", function () { location.hash = b.dataset.view; showView(b.dataset.view); });
+// ---------- log ----------
+var logLines = [];
+function log(kind, text) {
+  logLines.push({ t: new Date(), kind: kind, text: text });
+  if (logLines.length > LOG_MAX) logLines.shift();
+  renderLog();
+}
+function isStatusReply(text) { return /^ok\s+state=/.test(text); }
+function isStatusCmd(text) { return text === "status"; }
+var logQueued = false;
+function renderLog() {
+  if (logQueued) return; logQueued = true;
+  requestAnimationFrame(function () {
+    logQueued = false;
+    var show = $("showStatus").checked, el = $("log"), atEnd = el.scrollTop + el.clientHeight >= el.scrollHeight - 4;
+    var html = [];
+    for (var i = 0; i < logLines.length; i++) {
+      var l = logLines[i];
+      if (!show && (isStatusReply(l.text) || (l.kind === "out" && isStatusCmd(l.text)))) continue;
+      var cls = l.kind === "in" && /^err/i.test(l.text) ? "err" : l.kind;
+      var arrow = l.kind === "out" ? "→ " : l.kind === "in" ? "← " : "· ";
+      html.push('<span class="' + cls + '">' + l.t.toTimeString().slice(0, 8) + " " + arrow + esc(l.text) + "</span>");
+    }
+    el.innerHTML = html.join("\n");
+    if (atEnd) el.scrollTop = el.scrollHeight;
   });
-  window.addEventListener("hashchange", function () { showView(location.hash.slice(1)); });
+}
+function esc(s) { return s.replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
 
-  /* ---------- state ---------- */
-  // st: "stop" | "run" | "slow". Practice mode animates locally; connected mode follows the machine's status replies.
-  var S = { st: "stop", gain: 0, to: 0.6, ti: 0.4, wo: 0, wi: 0, tgo: 0, tgi: 0, next: 0, dpsO: 0, dpsI: 0, runStart: 0, lastDur: 0, pendingHow: "" };
-  var SHOW = { to: 0.5, ti: 0.2 };   // angles for the slowly turning drawing on "The machine"
-  var link = null;                   // { kind: "serial"|"sim", send(line), close() }
+// ---------- protocol ----------
+function send(line) {
+  if (!transport) return;
+  log("out", line);
+  transport.send(line);
+}
+function parseStatus(line) {
+  var out = {}, parts = line.replace(/^ok\s+/, "").split(/\s+/);
+  for (var i = 0; i < parts.length; i++) {
+    var kv = parts[i].split("=");
+    if (kv.length === 2) out[kv[0]] = kv[1];
+  }
+  return out;
+}
+function onLine(line) {
+  line = line.replace(/\r$/, "");
+  if (!line) return;
+  log("in", line);
+  if (isStatusReply(line)) handleStatus(parseStatus(line));
+}
+function num(v) { var x = parseFloat(v); return isFinite(x) ? x : null; }
 
-  function setState(st) {
-    S.st = st;
-    var el = $("state"); el.dataset.s = st;
-    el.textContent = st === "run" ? "Turning" : st === "slow" ? "Slowing down" : "Stopped";
-    $("btnStart").disabled = st !== "stop";
-    $("btnStop").disabled = st !== "run";
+function handleStatus(s) {
+  var prev = status; status = s;
+  var t = s.t != null ? num(s.t) : (s.t_ms != null ? num(s.t_ms) / 1000 : null);
+  var active = s.state === "RUNNING" || s.state === "STOPPING";
+  var last = run.samples[run.samples.length - 1];
+  // A new run: the machine went from stopped to running, or its run clock jumped back.
+  if (active && (prev.state !== "RUNNING" && prev.state !== "STOPPING" || (last && t != null && t < last.t))) newRun();
+  var g = num(s.gres), c = num(s.cov);
+  if (active && t != null && (!last || t > last.t)) {
+    run.samples.push({ t: t, g: g, c: c, o: num(s.outer_dps), i: num(s.inner_dps) });
+    if (run.readyT == null && g != null && c != null && g < TARGET_G && c >= TARGET_COV) run.readyT = t;
+    drawChart();
   }
-  function showMsg(t) { $("msg").textContent = t || ""; }
+  render();
+}
+function newRun() {
+  var d = new Date(), p = function (n) { return (n < 10 ? "0" : "") + n; };
+  run = { samples: [], readyT: null, startedAt: d,
+          id: "RPM-" + String(d.getFullYear()).slice(2) + p(d.getMonth() + 1) + p(d.getDate()) + "-" + p(d.getHours()) + p(d.getMinutes()) };
+  log("sys", "Run " + run.id + " started");
+}
 
-  /* ---------- runs ---------- */
-  var KEY = "rpm-hub-runs", runs = [], cur = null;
-  // Machine log of the latest run: one row per second from the status replies (kept in memory only).
-  var mlog = { runId: null, rows: [], lastT: -1 };
-  function updLogCount() {
-    var n = mlog.rows.length;
-    $("xLog").textContent = "log " + n + " rows";
-    $("mlogCount").textContent = n ? n + " rows from the latest run." : "Nothing logged yet. The log records while a machine is connected and turning.";
+// ---------- rendering ----------
+function fmtTime(sec) {
+  sec = Math.max(0, Math.floor(sec));
+  var h = Math.floor(sec / 3600), m = Math.floor(sec / 60) % 60, s = sec % 60;
+  return (h ? h + ":" + (m < 10 ? "0" : "") : "") + m + ":" + (s < 10 ? "0" : "") + s;
+}
+var STATE_TEXT = { RUNNING: "Running", STOPPING: "Stopping", STOPPED: "Stopped", CAL: "Calibrating" };
+function render() {
+  var st = status.state, last = run.samples[run.samples.length - 1];
+  $("state").textContent = connected ? (STATE_TEXT[st] || st || "–") : "Not connected";
+  $("timer").textContent = fmtTime(last ? last.t : 0);
+  $("btnStart").disabled = !connected || st !== "STOPPED";
+  $("btnStop").disabled = !connected || st !== "RUNNING";
+  $("btnEstop").disabled = !connected || st === "STOPPED";
+  $("gres").textContent = last && last.g != null ? last.g.toFixed(3) : "–";
+  $("cov").textContent = last && last.c != null ? Math.round(last.c * 100) : "–";
+  var r = $("ready"), sub = $("readySub");
+  r.removeAttribute("data-tone");
+  if (!last) { r.textContent = "Not started"; sub.textContent = "Press Start. The machine needs time to turn the sample through every direction."; return; }
+  if (last.g == null) { r.textContent = "No gravity data"; sub.textContent = "The machine does not report gres and cov yet. Update its firmware."; return; }
+  if (run.readyT != null) {
+    r.textContent = "Ready"; r.setAttribute("data-tone", "ok");
+    sub.textContent = "Reached both targets after " + fmtTime(run.readyT) + ".";
+    return;
   }
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(runs)); } catch (e) { } }
-  function load() { try { var v = JSON.parse(localStorage.getItem(KEY)); if (Array.isArray(v)) return v; } catch (e) { } return null; }
-  function examples() {
-    var d = new Date(); d.setHours(9, 0, 0, 0);
-    function ex(daysAgo, h, mins, how, sample, notes) {
-      var st = d.getTime() - daysAgo * 864e5 + (h - 9) * 36e5;
-      return { id: "ex" + daysAgo, start: st, end: st + mins * 6e4, how: how, sample: sample, notes: notes, mode: "machine", example: true };
-    }
-    return [ex(2, 9, 240, "Stopped", "Wheat seeds, tray B", "Roots bend less"), ex(1, 14, 35, "Emergency stop", "Cress seeds", "Lid was open")];
-  }
-  function fDate(ms) { var d = new Date(ms); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
-  function fTime(ms) { if (ms == null) return ""; var d = new Date(ms); return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
-  function mins(r) { return ((r.end != null ? r.end : Date.now()) - r.start) / 6e4; }
-  // Every run gets an ID: RPM-YYMMDD-NN (NN counts runs per day). A sample without a name uses its ID.
-  function idPrefix(ms) { var d = new Date(ms); return "RPM-" + String(d.getFullYear()).slice(2) + pad(d.getMonth() + 1) + pad(d.getDate()) + "-"; }
-  function nextId(ms) {
-    var p = idPrefix(ms || Date.now()), n = 0;
-    runs.forEach(function (r) { if (r.sid && r.sid.indexOf(p) === 0) n = Math.max(n, parseInt(r.sid.slice(p.length), 10) || 0); });
-    return p + pad(n + 1);
-  }
-  function ensureIds() {
-    runs.slice().sort(function (a, b) { return a.start - b.start; }).forEach(function (r) {
-      if (!r.sid) r.sid = nextId(r.start);
-      if (!String(r.sample || "").trim()) r.sample = r.sid;
-    });
-  }
-  var autoSample = "";
-  function refreshSampleDefault() {
-    var inp = $("sampleInput"), v = inp.value.trim();
-    if (!v || v === autoSample) { autoSample = nextId(); inp.value = autoSample; }
-  }
-  function endedText(r) {
-    if (r.end == null) return "Running";
-    return r.how + (r.mode === "practice" ? " (practice)" : r.mode === "simulated" ? " (simulated)" : "");
-  }
-  function runBegin(startMs) {
-    var mode = !link ? "practice" : link.kind === "sim" ? "simulated" : "machine";
-    var sid = nextId();
-    cur = { id: "r" + Date.now(), sid: sid, start: startMs || Date.now(), end: null, how: "", sample: $("sampleInput").value.trim() || sid, notes: "", mode: mode, example: false };
-    runs.push(cur); save(); renderRuns();
-    mlog = { runId: cur.id, rows: [], lastT: -1 }; updLogCount();
-    refreshSampleDefault();
-    S.runStart = nowS() - (Date.now() - cur.start) / 1000;
-  }
-  function runFinish(how) {
-    if (!cur) return;
-    cur.end = Date.now(); cur.how = how; S.lastDur = (cur.end - cur.start) / 1000; cur = null; save(); renderRuns();
-  }
-  function td(tr, text, cls) { var c = document.createElement("td"); c.textContent = text; if (cls) c.className = cls; tr.appendChild(c); return c; }
-  function renderRuns() {
-    var tb = $("runsBody"); tb.textContent = "";
-    runs.slice().reverse().forEach(function (r) {
-      var tr = document.createElement("tr"); if (r.end == null) tr.className = "live";
-      var d = td(tr, fDate(r.start) + " " + fTime(r.start));
-      if (r.example) { var b = document.createElement("span"); b.className = "ex"; b.textContent = "Example"; d.appendChild(b); }
-      td(tr, r.sid || "", "sid");
-      ["sample", "notes"].forEach(function (k) {
-        var c = td(tr, ""), inp = document.createElement("input");
-        inp.type = "text"; inp.value = r[k]; inp.id = k + "-" + r.id;
-        inp.setAttribute("aria-label", (k === "sample" ? "Sample" : "Notes") + ", run " + fDate(r.start) + " " + fTime(r.start));
-        inp.addEventListener("input", function () { r[k] = inp.value; save(); });
-        if (k === "sample") inp.addEventListener("change", function () { if (!inp.value.trim()) { inp.value = r.sid; r.sample = r.sid; save(); } });
-        c.appendChild(inp);
-      });
-      td(tr, mins(r).toFixed(0), "num").id = "dur-" + r.id;
-      td(tr, endedText(r));
-      td(tr, r.mode, "colx");
-      var dc = td(tr, ""), del = document.createElement("button");
-      del.type = "button"; del.className = "del"; del.id = "del-" + r.id; del.textContent = "Delete";
-      if (r.end == null) del.disabled = true;
-      del.addEventListener("click", function () {
-        if (del.dataset.armed !== "1") {
-          del.dataset.armed = "1"; del.textContent = "Sure?";
-          setTimeout(function () { del.dataset.armed = ""; del.textContent = "Delete"; }, 3000);
-          return;
-        }
-        runs = runs.filter(function (x) { return x !== r; }); save(); renderRuns();
-      });
-      dc.appendChild(del);
-      tb.appendChild(tr);
-    });
-    $("btnRemoveExamples").hidden = !runs.some(function (r) { return r.example; });
-  }
-  $("btnRemoveExamples").addEventListener("click", function () { runs = runs.filter(function (r) { return !r.example; }); save(); renderRuns(); });
+  r.textContent = st === "RUNNING" ? "Initializing…" : "Stopped before ready";
+  var f = forecast();
+  sub.textContent = f == null ? "Collecting data for a forecast…"
+    : "Rough forecast: gravity target in about " + fmtTime(Math.max(0, f - last.t)) + ".";
+}
+// Fit average gravity ≈ a·t^k on the recent half of the run and solve for the target.
+function forecast() {
+  var pts = run.samples.filter(function (p) { return p.t >= 20 && p.g > 0; });
+  if (pts.length < 8) return null;
+  pts = pts.slice(Math.floor(pts.length / 2));
+  var n = pts.length, sx = 0, sy = 0, sxx = 0, sxy = 0;
+  pts.forEach(function (p) { var x = Math.log(p.t), y = Math.log(p.g); sx += x; sy += y; sxx += x * x; sxy += x * y; });
+  var k = (n * sxy - sx * sy) / (n * sxx - sx * sx), c = (sy - k * sx) / n;
+  if (!isFinite(k) || k > -0.1) return null;
+  var tr = Math.exp((Math.log(TARGET_G) - c) / k);
+  return isFinite(tr) && tr < 24 * 3600 ? tr : null;
+}
 
-  /* ---------- export ---------- */
-  function isExpert() { return $("expertSwitch").getAttribute("aria-checked") === "true"; }
-  function rows(dec) {
-    var head = ["Date", "ID", "Start", "End", "Duration (minutes)", "How it ended", "Sample", "Notes"];
-    if (isExpert()) head.push("Mode");
-    var out = [head];
-    runs.forEach(function (r) {
-      var row = [fDate(r.start), r.sid, fTime(r.start), fTime(r.end), mins(r).toFixed(1).replace(".", dec), r.end == null ? "Running" : r.how, r.sample, r.notes];
-      if (isExpert()) row.push(r.mode);
-      out.push(row);
-    });
-    return out;
+// ---------- chart ----------
+var canvas = $("chart");
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function niceStep(span) {
+  var steps = [10, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200];
+  for (var i = 0; i < steps.length; i++) if (span / steps[i] <= 6) return steps[i];
+  return 14400;
+}
+function drawChart() {
+  var dpr = window.devicePixelRatio || 1, W = canvas.clientWidth, H = canvas.clientHeight;
+  if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
   }
-  function de() { return $("csvFormat").value === "de"; }
-  function decSep() { return de() ? "," : "."; }
-  function toTsv(t) { return t.map(function (r) { return r.map(function (v) { return String(v).replace(/[\t\r\n]+/g, " "); }).join("\t"); }).join("\r\n"); }
-  function toCsv(t) {
-    var sep = de() ? ";" : ",";
-    return t.map(function (r) {
-      return r.map(function (v) { v = String(v); return /["\r\n]/.test(v) || v.indexOf(sep) >= 0 ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(sep);
-    }).join("\r\n") + "\r\n";
-  }
-  function copyTable(t) {
-    var text = toTsv(t), box = $("copyBox"), msg = $("copyMsg");
-    function fallback() { box.value = text; box.hidden = false; box.focus(); box.select(); msg.textContent = "Press Ctrl+C or Cmd+C to copy the selected text."; }
-    box.hidden = true;
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { msg.textContent = "Copied. Now paste it into an empty Excel sheet."; }, fallback);
-    else fallback();
-  }
-  function downloadTable(t, name) {
-    try {
-      var url = URL.createObjectURL(new Blob(["﻿" + toCsv(t)], { type: "text/csv;charset=utf-8" })), a = document.createElement("a");
-      a.href = url; a.download = name + "-" + fDate(Date.now()) + ".csv";
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
-      $("copyMsg").textContent = "If no file appears, use Copy.";
-    } catch (e) { $("copyMsg").textContent = "Download is not possible here. Use Copy."; }
-  }
-  function num(v, d) { return v !== "" && v != null && isFinite(v) ? Number(v).toFixed(d).replace(".", decSep()) : ""; }
-  function logRows() {
-    var run = runs.filter(function (x) { return x.id === mlog.runId; })[0], sample = run ? run.sample : "";
-    var out = [["Date", "Time", "Seconds since start", "State", "Outer ring speed (°/s, commanded)", "Inner ring speed (°/s, commanded)", "Outer motor signal (µs)", "Inner motor signal (µs)", "ID", "Sample"]];
-    mlog.rows.forEach(function (r) {
-      var d = new Date(r.time);
-      out.push([fDate(r.time), pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()), num(r.t, 1), r.state, num(r.outer, 2), num(r.inner, 2), r.outer_us, r.inner_us, run ? run.sid : "", sample]);
-    });
-    return out;
-  }
-  $("btnCopy").addEventListener("click", function () { copyTable(rows(decSep())); });
-  $("btnCsv").addEventListener("click", function () { downloadTable(rows(decSep()), "rpm-results"); });
-  $("btnCopyLog").addEventListener("click", function () { copyTable(logRows()); });
-  $("btnCsvLog").addEventListener("click", function () { downloadTable(logRows(), "rpm-machine-log"); });
-
-  /* ---------- controls ---------- */
-  function pickTargets(t) {
-    function r() { return (0.15 + Math.random() * 0.45) * (Math.random() < 0.5 ? -1 : 1); }
-    S.tgo = r(); S.tgi = r(); S.next = t + 4 + Math.random() * 4;
-  }
-  function doStart() {
-    if (S.st !== "stop") return;
-    showMsg(""); S.pendingHow = "";
-    if (link) send("start"); else pickTargets(nowS());
-    runBegin(); setState("run");
-  }
-  function doStop() {
-    if (S.st !== "run") return;
-    S.pendingHow = "Stopped";
-    if (link) send("stop");
-    setState("slow");
-  }
-  function doEstop() {
-    if (link) send("estop");
-    if (S.st !== "stop") runFinish("Emergency stop");
-    S.gain = 0; S.wo = S.wi = 0; S.dpsO = S.dpsI = 0; setState("stop");
-  }
-  $("btnStart").addEventListener("click", doStart);
-  $("btnStop").addEventListener("click", doStop);
-  $("btnEstop").addEventListener("click", doEstop);
-  document.addEventListener("keydown", function (e) {
-    var tg = e.target && e.target.tagName;
-    if (e.key === "Escape" && tg !== "INPUT" && tg !== "TEXTAREA" && tg !== "SELECT" && !document.querySelector(":popover-open")) { e.preventDefault(); doEstop(); }
+  var ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  var ink = css("--muted"), grid = css("--grid"), cG = css("--accent"), cC = css("--cov"), cOk = css("--ok");
+  var L = 46, R = 40, T = 8, B = 26, gap = 22;
+  var h1 = Math.round((H - T - B - gap) * 0.62), h2 = H - T - B - gap - h1;
+  var top1 = T, top2 = T + h1 + gap, pw = Math.max(10, W - L - R);
+  var tmax = run.samples.length ? run.samples[run.samples.length - 1].t : 0;
+  var xmax = Math.max(60, tmax * 1.05);
+  var X = function (t) { return L + t / xmax * pw; };
+  var lgMin = Math.log10(0.01), lgMax = 0;
+  var Yg = function (g) { var v = Math.log10(Math.min(1, Math.max(0.01, g))); return top1 + (lgMax - v) / (lgMax - lgMin) * h1; };
+  var Yc = function (c) { return top2 + (1 - c) * h2; };
+  ctx.font = "11px " + css("--font-num"); ctx.lineWidth = 1;
+  // grid + axis labels
+  ctx.fillStyle = ink; ctx.textBaseline = "middle";
+  ctx.textAlign = "right";
+  [1, 0.3, 0.1, 0.03, 0.01].forEach(function (g) {
+    var y = Yg(g); ctx.strokeStyle = grid; ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(L + pw, y); ctx.stroke();
+    ctx.fillText(g + "", L - 6, y);
   });
-
-  /* ---------- log ---------- */
-  var polls = 0;
-  function logLine(t, cls) {
-    var log = $("log"), d = document.createElement("div");
-    if (cls) d.className = cls; d.textContent = t; log.appendChild(d);
-    while (log.childNodes.length > 300) log.removeChild(log.firstChild);
-    log.scrollTop = log.scrollHeight;
-  }
-  $("btnClearLog").addEventListener("click", function () { $("log").textContent = ""; });
-
-  /* ---------- talking to the machine ---------- */
-  function send(line, isPoll) {
-    if (!link) return;
-    if (isPoll) polls++;
-    if (!isPoll || $("showPolls").checked) logLine("> " + line, "tx");
-    link.send(line);
-  }
-  function parseStatus(line) {
-    if (line.indexOf("state=") < 0) return null;
-    var o = {}; line.replace(/^ok\s+/i, "").split(/\s+/).forEach(function (kv) { var i = kv.indexOf("="); if (i > 0) o[kv.slice(0, i)] = kv.slice(i + 1); });
-    return o;
-  }
-  function onLine(line) {
-    line = line.replace(/\r$/, "").trim(); if (!line) return;
-    var st = parseStatus(line), isPoll = !!st && polls > 0 && /^ok\s+state=\w+\s+mode=\w+\s+inner_dps=/.test(line);
-    if (isPoll) polls--;
-    if (!isPoll || $("showPolls").checked) logLine("< " + line, /^err/i.test(line) ? "err" : "");
-    if (/^err/i.test(line)) showMsg("The machine says: " + line.replace(/^err\s*/i, ""));
-    if (st) applyStatus(st);
-  }
-  function applyStatus(o) {
-    var o_ = Number(o.outer_dps), i_ = Number(o.inner_dps);
-    if (isFinite(o_)) S.dpsO = o_; if (isFinite(i_)) S.dpsI = i_;
-    // rpmcore prints t in seconds with ms precision (t=12.345); accept t_ms too.
-    var tms = o.t_ms != null ? Number(o.t_ms) : o.t != null ? Number(o.t) * 1000 : NaN;
-    if (o.state) $("xState").textContent = "state " + o.state;
-    if (isFinite(o_)) $("xOuter").textContent = "outer " + o_.toFixed(1) + " °/s";
-    if (isFinite(i_)) $("xInner").textContent = "inner " + i_.toFixed(1) + " °/s";
-    if (isFinite(tms)) $("xTime").textContent = "t " + (tms / 1000).toFixed(1) + " s";
-    var m = o.state;
-    if (cur && (m === "RUNNING" || m === "STOPPING")) {
-      var tsec = isFinite(tms) ? tms / 1000 : (Date.now() - cur.start) / 1000;
-      if (tsec - mlog.lastT >= 1 || tsec < mlog.lastT) {
-        mlog.rows.push({ time: Date.now(), t: tsec, state: m, outer: o_, inner: i_, outer_us: o.outer_us || "", inner_us: o.inner_us || "" });
-        if (mlog.rows.length > 172800) mlog.rows.shift(); // keep at most 48 h
-        mlog.lastT = tsec; updLogCount();
-      }
-    }
-    if (m === "RUNNING") {
-      if (!cur) runBegin(isFinite(tms) ? Date.now() - tms : Date.now()); // machine was already running
-      if (S.st !== "slow") setState("run");
-    } else if (m === "STOPPING") {
-      setState("slow");
-    } else if (m === "STOPPED") {
-      if (cur) runFinish(S.pendingHow || "Stopped");
-      S.dpsO = S.dpsI = 0;
-      setState("stop");
-    }
-  }
-
-  var FRIENDLY = "To connect a machine, open this page from the project website in Chrome or Edge on a computer.";
-  function connNote(t, offerSim) { $("connNote").hidden = !t; $("connNoteText").textContent = t || ""; $("btnUseSim").hidden = !offerSim; }
-  $("btnNoteClose").addEventListener("click", function () { connNote(""); });
-  var pollId = 0;
-  function setLink(l) {
-    link = l;
-    var on = !!l;
-    $("conn").dataset.on = on ? "1" : "0";
-    $("connText").textContent = !on ? "Practice mode, no machine plugged in" : l.kind === "sim" ? "Machine connected (simulated preview)" : "Machine connected";
-    $("btnConnect").textContent = on ? "Disconnect" : "Connect machine";
-    $("btnConnect").classList.toggle("primary", !on);
-    clearInterval(pollId); polls = 0;
-    if (on) { send("status", true); pollId = setInterval(function () { send("status", true); }, 500); }
-    else { if (cur) runFinish("Disconnected"); setState("stop"); S.dpsO = S.dpsI = 0; ["xState", "xOuter", "xInner", "xTime"].forEach(function (id) { $(id).textContent = $(id).textContent.split(" ")[0] + " –"; }); }
-  }
-
-  /* Simulated machine for the preview only: answers like rpmcore/commands.py (sim/chore/version-bqckf1sh). Speeds are made up. */
-  function SimMachine(onLine) {
-    var m = { state: "STOPPED", vo: 0, vi: 0, to: 0, ti: 0, tms: 0, next: 0, last: performance.now() };
-    function tick() {
-      var t = performance.now(), dt = Math.min(0.2, (t - m.last) / 1000); m.last = t;
-      if (m.state === "RUNNING") {
-        if (t > m.next) {
-          m.to = (10 + Math.random() * 50) * (Math.random() < 0.5 ? -1 : 1);
-          m.ti = (10 + Math.random() * 50) * (Math.random() < 0.5 ? -1 : 1);
-          m.next = t + 5000 + Math.random() * 15000;
-        }
-      } else { m.to = 0; m.ti = 0; }
-      var a = 20 * dt;
-      m.vo += Math.max(-a, Math.min(a, m.to - m.vo)); m.vi += Math.max(-a, Math.min(a, m.ti - m.vi));
-      if (m.state !== "STOPPED") m.tms += dt * 1000;
-      if (m.state === "STOPPING" && m.vo === 0 && m.vi === 0) m.state = "STOPPED";
-    }
-    var iv = setInterval(tick, 20);
-    function reply(line) {
-      var c = line.trim().toLowerCase();
-      if (c === "help") return "ok commands: help | status | start [random|clino3d|clino2d] | stop | estop | mode <random|clino3d|clino2d> | set <v_min|v_max|accel|hold_min|hold_max|seed> <value> | pulse <inner|outer> <us> | pulse off";
-      if (c === "start") { if (m.state === "STOPPED") m.tms = 0; m.state = "RUNNING"; m.next = 0; return "ok state=RUNNING mode=random"; }
-      if (c === "stop") { if (m.state === "RUNNING") m.state = "STOPPING"; return "ok state=" + m.state; }
-      if (c === "estop") { m.state = "STOPPED"; m.vo = m.vi = 0; return "ok state=STOPPED"; }
-      if (c === "status") {
-        var ms = Math.round(m.tms), us = function (v) { return m.state === "STOPPED" ? "off" : String(1500 + Math.round(v * 2.8)); };
-        return "ok state=" + m.state + " mode=random inner_dps=" + m.vi.toFixed(2) + " outer_dps=" + m.vo.toFixed(2) +
-          " inner_us=" + us(m.vi) + " outer_us=" + us(m.vo) + " t=" + Math.floor(ms / 1000) + "." + String(ms % 1000).padStart(3, "0");
-      }
-      return "err unknown command: " + c.split(/\s+/)[0] + " (try help)";
-    }
-    return {
-      kind: "sim",
-      send: function (line) { var r = reply(line); setTimeout(function () { onLine(r); }, 25); },
-      close: function () { clearInterval(iv); },
-      warmStart: function (ms) { m.state = "RUNNING"; m.tms = ms; m.vo = 32; m.vi = -21; m.to = 32; m.ti = -21; m.next = performance.now() + 6000; }
-    };
-  }
-  function useSim(warmMs) {
-    var sim = SimMachine(onLine);
-    if (warmMs) sim.warmStart(warmMs);
-    connNote(""); setLink(sim);
-    logLine("simulated machine connected (preview)");
-  }
-  $("btnUseSim").addEventListener("click", function () { useSim(0); });
-
-  /* Real machine over Web Serial */
-  var port = null, writer = null, reader = null;
-  function serialLink() {
-    var enc = new TextEncoder();
-    return { kind: "serial", send: function (line) { writer.write(enc.encode(line + "\n")).catch(function () { showMsg("The machine did not answer. Check the cable."); }); }, close: closeSerial };
-  }
-  function readLoop() {
-    var buf = "", dec = new TextDecoder();
-    reader = port.readable.getReader();
-    (function pump() {
-      reader.read().then(function (r) {
-        if (r.done) return;
-        buf += dec.decode(r.value, { stream: true });
-        var parts = buf.split("\n"); buf = parts.pop(); parts.forEach(onLine);
-        pump();
-      }).catch(function () { });
-    })();
-  }
-  function closeSerial() {
-    var p = port; port = null;
-    (reader ? reader.cancel().catch(function () { }) : Promise.resolve()).then(function () {
-      try { if (reader) reader.releaseLock(); } catch (e) { }
-      try { if (writer) writer.releaseLock(); } catch (e) { }
-      reader = writer = null;
-      if (p) p.close().catch(function () { });
-    });
-  }
-  $("btnConnect").addEventListener("click", function () {
-    if (link) { var l = link; setLink(null); if (l.close) l.close(); logLine("disconnected"); return; }
-    if (!("serial" in navigator) || !window.isSecureContext) { connNote(FRIENDLY, true); return; }
-    navigator.serial.requestPort().then(function (p) {
-      port = p; return p.open({ baudRate: parseInt($("baud").value, 10) || 115200 });
-    }).then(function () {
-      writer = port.writable.getWriter(); readLoop();
-      connNote(""); setLink(serialLink());
-      logLine("connected at " + $("baud").value + " baud");
-    }).catch(function (e) {
-      port = null;
-      if (e && e.name === "NotFoundError") return;
-      connNote(e && e.name === "SecurityError" ? FRIENDLY : "Could not connect. Check the cable and try again.", true);
-    });
+  [0, 0.5, 1].forEach(function (c) {
+    var y = Yc(c); ctx.strokeStyle = grid; ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(L + pw, y); ctx.stroke();
+    ctx.fillText(Math.round(c * 100) + "%", L - 6, y);
   });
-  if ("serial" in navigator) navigator.serial.addEventListener("disconnect", function (e) {
-    if (link && link.kind === "serial" && e.target === port) { setLink(null); closeSerial(); showMsg("The machine was unplugged."); }
-  });
-  $("cmdForm").addEventListener("submit", function (e) {
-    e.preventDefault();
-    var v = $("cmdInput").value.trim(); if (!v) return; $("cmdInput").value = "";
-    var w = v.toLowerCase();
-    if (w === "start") return doStart();
-    if (w === "stop") return doStop();
-    if (w === "estop") return doEstop();
-    if (link) send(v); else logLine("not connected: " + v, "err");
-  });
-
-  /* ---------- expert mode: changes the experiment tab in place ---------- */
-  function setExpert(on) {
-    $("expertSwitch").setAttribute("aria-checked", on ? "true" : "false");
-    $("app").classList.toggle("expert-on", on);
-    $("liveChips").hidden = !on;
-    $("serialCard").hidden = !on;
-    $("mlogBox").hidden = !on;
-    try { localStorage.setItem("rpm-hub-expert", on ? "1" : "0"); } catch (e) { }
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  var step = niceStep(xmax);
+  for (var t = 0; t <= xmax; t += step) {
+    var x = X(t); ctx.strokeStyle = grid;
+    ctx.beginPath(); ctx.moveTo(x, top1); ctx.lineTo(x, top1 + h1); ctx.moveTo(x, top2); ctx.lineTo(x, top2 + h2); ctx.stroke();
+    ctx.fillText(fmtTime(t), x, top2 + h2 + 7);
   }
-  $("expertSwitch").addEventListener("click", function () { setExpert(!isExpert()); });
-
-  /* ---------- 3D drawing ---------- */
-  function fitCanvas(c) {
-    var r = c.getBoundingClientRect(), d = Math.min(2, window.devicePixelRatio || 1);
-    var w = Math.max(1, Math.round(r.width * d)), h = Math.max(1, Math.round(r.height * d));
-    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
-    var x = c.getContext("2d"); x.setTransform(d, 0, 0, d, 0, 0); return { ctx: x, w: r.width, h: r.height };
+  // targets
+  ctx.setLineDash([5, 4]); ctx.strokeStyle = ink;
+  ctx.beginPath(); ctx.moveTo(L, Yg(TARGET_G)); ctx.lineTo(L + pw, Yg(TARGET_G)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(L, Yc(TARGET_COV)); ctx.lineTo(L + pw, Yc(TARGET_COV)); ctx.stroke();
+  ctx.setLineDash([]); ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  ctx.fillText("0.05 g", L + pw + 4, Yg(TARGET_G)); ctx.fillText("90%", L + pw + 4, Yc(TARGET_COV));
+  // ready marker
+  if (run.readyT != null) {
+    var xr = X(run.readyT); ctx.strokeStyle = cOk; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(xr, top1); ctx.lineTo(xr, top2 + h2); ctx.stroke();
+    ctx.fillStyle = cOk; ctx.textAlign = xr > L + pw - 60 ? "right" : "left"; ctx.textBaseline = "top";
+    ctx.fillText(" Ready " + fmtTime(run.readyT) + " ", xr, top1 + 2);
   }
-  function rotX(p, a) { var c = Math.cos(a), s = Math.sin(a); return [p[0], p[1] * c - p[2] * s, p[1] * s + p[2] * c]; }
-  function rotZ(p, a) { var c = Math.cos(a), s = Math.sin(a); return [p[0] * c - p[1] * s, p[0] * s + p[1] * c, p[2]]; }
-  var Z0 = 2.5, YAW = -0.62, PITCH = 0.36;
-  function view(p) {
-    var cy = Math.cos(YAW), sy = Math.sin(YAW), cp = Math.cos(PITCH), sp = Math.sin(PITCH);
-    var x1 = p[0] * cy - p[1] * sy, y1 = p[0] * sy + p[1] * cy, z1 = p[2];
-    return [x1, z1 * cp + y1 * sp, y1 * cp - z1 * sp];
-  }
-  function rectXZ(x0, x1, z0, z1, y) { return [[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]]; }
-  function box(x0, x1, y0, y1, z0, z1) {
-    var P = [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]];
-    return [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4], [2, 3, 7, 6], [1, 2, 6, 5], [0, 3, 7, 4]].map(function (f) { return f.map(function (i) { return P[i]; }); });
-  }
-  function drawBuild(canvas, to, ti, labels) {
-    var f = fitCanvas(canvas), ctx = f.ctx, W = f.w, H = f.h;
-    ctx.clearRect(0, 0, W, H);
-    function innerT(p) { var q = rotX([p[0], p[1], p[2] - Z0], to); return [q[0], q[1], q[2] + Z0]; }
-    function platT(p) { var q = rotX(rotZ([p[0], p[1], p[2] - Z0], ti), to); return [q[0], q[1], q[2] + Z0]; }
-    function ident(p) { return p; }
-    var s = Math.min(W / 320, H / 230), cx = W * 0.5, cyy = H * 0.5;
-    function P(p) { var v = view(p); return [cx + v[0] * s, cyy - v[1] * s, v[2]]; }
-    var items = [];
-    function poly(pts, T, fill, stroke, lw, bias) { var pp = pts.map(function (p) { return P(T(p)); }), d = 0; pp.forEach(function (q) { d += q[2]; }); items.push({ k: "poly", pts: pp, d: d / pp.length + (bias || 0), fill: fill, stroke: stroke, lw: lw || 1 }); }
-    function ring(o, i, T, fill, stroke) { var a = o.map(function (p) { return P(T(p)); }), b = i.map(function (p) { return P(T(p)); }), d = 0; a.forEach(function (q) { d += q[2]; }); items.push({ k: "ring", a: a, b: b, d: d / a.length, fill: fill, stroke: stroke }); }
-    function line(p0, p1, T, stroke, lw, bias) { var a = P(T(p0)), b = P(T(p1)); items.push({ k: "line", a: a, b: b, d: (a[2] + b[2]) / 2 + (bias || 0), stroke: stroke, lw: lw }); }
-    function boxItems(b, T, fill, stroke, bias) { b.forEach(function (face) { poly(face, T, fill, stroke, 1, bias); }); }
-    function gear(c, axis, r, teeth, T, rot, fill, stroke, bias) {
-      var pts = [];
-      for (var i = 0; i < teeth * 2; i++) { var a = i / (teeth * 2) * Math.PI * 2 + rot, rr = i % 2 ? r : r * 0.9; pts.push(axis === "x" ? [c[0], c[1] + Math.cos(a) * rr, c[2] + Math.sin(a) * rr] : [c[0] + Math.cos(a) * rr, c[1] + Math.sin(a) * rr, c[2]]); }
-      poly(pts, T, fill, stroke, 1, bias);
-    }
-    var ink = COL.ink, muted = COL.muted, acc = COL.accent, amb = COL.amber;
-    poly([[-150, -95, -91], [150, -95, -91], [150, 85, -91], [-150, 85, -91]], ident, rgba(muted, 0.08), rgba(muted, 0.25), 1, 1e4);
-    [-86, 86].forEach(function (x) {
-      boxItems(box(x - 3, x + 3, -42, 42, -91, -84), ident, rgba(muted, 0.35), rgba(ink, 0.5), 0);
-      poly([[x, -30, -84], [x, 30, -84], [x, 10, -45], [x, -10, -45]], ident, rgba(muted, 0.3), rgba(ink, 0.5), 1, 0);
+  // series
+  function line(color, getY, key) {
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.beginPath();
+    var started = false, lastPt = null;
+    run.samples.forEach(function (p) {
+      if (p[key] == null) return;
+      var x = X(p.t), y = getY(p[key]);
+      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+      lastPt = [x, y];
     });
-    ring(rectXZ(-84.5, 84.5, -88, 92, 0), rectXZ(-79.5, 79.5, -83, 87, 0), ident, rgba(muted, 0.32), rgba(ink, 0.7));
-    boxItems(box(-96, -84.5, -6, 6, 27, 55), ident, rgba(amb, 0.5), rgba(ink, 0.7), -2);
-    boxItems(box(-104, -86, -10, 10, Z0 - 10, Z0 + 10), ident, rgba(muted, 0.35), rgba(ink, 0.7), -2);
-    gear([-82, 0, 40.5], "x", 8.6, 15, ident, -to * 4, rgba(amb, 0.55), rgba(ink, 0.6), -3);
-    gear([-77, 0, Z0], "x", 31.5, 30, innerT, 0, rgba(amb, 0.22), rgba(ink, 0.55), -1);
-    ring(rectXZ(-78.5, 78.5, Z0 - 60, Z0 + 60, 0), rectXZ(-71, 71, Z0 - 52, Z0 + 52, 0), innerT, rgba(acc, 0.28), acc);
-    boxItems(box(27, 49, -6, 6, 66, 92), innerT, rgba(amb, 0.5), rgba(ink, 0.7), 0);
-    gear([38, 0, 64], "z", 8.6, 15, innerT, ti * 4, rgba(amb, 0.55), rgba(ink, 0.6), -1);
-    gear([0, 0, 64], "z", 31.5, 30, platT, 0, rgba(amb, 0.22), rgba(ink, 0.55), -1);
-    line([0, 0, Z0 - 60], [0, 0, Z0 + 64], platT, ink, 2.2, -0.5);
-    poly(rectXZ(-31, 31, Z0 - 44, Z0 + 44, 0), platT, rgba(acc, 0.18), acc, 1.4, 0);
-    boxItems(box(-11, 11, -11, 11, Z0 - 11, Z0 + 11), platT, rgba(acc, 0.85), ink, -0.2);
-    items.sort(function (a, b) { return b.d - a.d; });
-    ctx.lineJoin = "round";
-    items.forEach(function (it) {
-      if (it.k === "line") { ctx.beginPath(); ctx.moveTo(it.a[0], it.a[1]); ctx.lineTo(it.b[0], it.b[1]); ctx.strokeStyle = it.stroke; ctx.lineWidth = it.lw; ctx.stroke(); return; }
-      ctx.beginPath();
-      (it.k === "ring" ? [it.a, it.b] : [it.pts]).forEach(function (pts) { ctx.moveTo(pts[0][0], pts[0][1]); for (var i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]); ctx.closePath(); });
-      ctx.fillStyle = it.fill; ctx.fill("evenodd"); ctx.strokeStyle = it.stroke; ctx.lineWidth = it.lw || 1; ctx.stroke();
-    });
-    var fs = W < 420 ? 12 : 13, font = "500 " + fs + "px " + cssVar("--f-body");
-    var g0 = P([125, 0, 70]), g1 = P([125, 0, 15]);
-    ctx.strokeStyle = ink; ctx.fillStyle = ink; ctx.lineWidth = 2.5;
-    ctx.beginPath(); ctx.moveTo(g0[0], g0[1]); ctx.lineTo(g1[0], g1[1] - 4); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(g1[0], g1[1] + 2); ctx.lineTo(g1[0] - 6, g1[1] - 8); ctx.lineTo(g1[0] + 6, g1[1] - 8); ctx.closePath(); ctx.fill();
-    ctx.font = font; ctx.textAlign = "center"; ctx.textBaseline = "bottom"; ctx.fillText("Gravity", g0[0], g0[1] - 4);
-    if (!labels) return;
-    function tag(anchor, dx, dy, text) {
-      ctx.font = font;
-      var tw = ctx.measureText(text).width, pw = tw + 14, ph = fs + 10;
-      var lx = Math.max(4, Math.min(W - pw - 4, anchor[0] + dx - pw / 2)), ly = Math.max(4, Math.min(H - ph - 4, anchor[1] + dy - ph / 2));
-      ctx.strokeStyle = ink; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(anchor[0], anchor[1]); ctx.lineTo(lx + pw / 2, ly + ph / 2); ctx.stroke();
-      ctx.beginPath(); ctx.arc(anchor[0], anchor[1], 2.5, 0, Math.PI * 2); ctx.fillStyle = ink; ctx.fill();
-      ctx.fillStyle = COL.surface; ctx.strokeStyle = COL.line;
-      ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(lx, ly, pw, ph, 6); else ctx.rect(lx, ly, pw, ph); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = ink; ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillText(text, lx + 7, ly + ph / 2 + 0.5);
+    ctx.stroke();
+    if (lastPt) { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(lastPt[0], lastPt[1], 3.5, 0, 7); ctx.fill(); }
+  }
+  line(cG, Yg, "g"); line(cC, Yc, "c");
+}
+window.addEventListener("resize", drawChart);
+if (window.matchMedia) matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawChart);
+new MutationObserver(drawChart).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+// ---------- connection status ----------
+function setConn(tone, text, isConnected) {
+  $("conn").setAttribute("data-tone", tone); $("connText").textContent = text;
+  connected = isConnected;
+  if (!isConnected) status = {};
+  render();
+}
+var pollTimer = null;
+function startPolling(ms) {
+  clearInterval(pollTimer);
+  pollTimer = setInterval(function () { if (connected) send("status"); }, ms);
+}
+
+// ---------- transport 1: the launcher (localhost, bridges to the Arduino) ----------
+function connectLauncher() {
+  var es, opened = false;
+  try { es = new EventSource("/events"); } catch (e) { startSim("The launcher was not found."); return; }
+  var fallback = setTimeout(function () { if (!opened) { es.close(); startSim("The launcher was not found."); } }, 2500);
+  es.onopen = function () {
+    opened = true; clearTimeout(fallback);
+    transport = { kind: "launcher", send: function (line) {
+      fetch("/cmd", { method: "POST", headers: { "Content-Type": "text/plain" }, body: line })
+        .then(function (r) { if (!r.ok) log("sys", "Command not sent: the Arduino is not connected."); })
+        .catch(function () { log("sys", "Command not sent: the launcher is not running."); });
+    } };
+    startPolling(POLL_MS_MACHINE);
+  };
+  es.addEventListener("port", function (ev) {
+    var p = {}; try { p = JSON.parse(ev.data); } catch (e) {}
+    if (p.connected) { setConn("ok", "Arduino · " + (p.port || "connected"), true); log("sys", "Connected to " + (p.port || "the Arduino")); send("status"); }
+    else { setConn("warn", "Plug in the Arduino", false); log("sys", "Arduino not connected. Waiting for it…"); }
+  });
+  es.addEventListener("line", function (ev) { onLine(ev.data); });
+  es.onerror = function () { if (opened) setConn("danger", "Launcher stopped. Start it again.", false); };
+}
+
+// ---------- transport 2: simulated machine (demo without hardware) ----------
+// Same commands, same status line and the same gravity estimate as the Arduino contract
+// (testing/gravity-estimate/), so the page behaves the same way with and without a machine.
+// Round like C's (long)(x >= 0 ? x + 0.5 : x - 0.5); "| 0" also turns -0 into 0.
+function roundAway(x) { return (x >= 0 ? Math.floor(x + 0.5) : -Math.floor(-x + 0.5)) | 0; }
+function GravityEstimate() { this.start(); }
+GravityEstimate.prototype.start = function () { this.sx = 0; this.sy = 0; this.sz = 0; this.n = 0; this.acc = 0; this.bins = new Uint8Array(200); this.hit = 0; };
+GravityEstimate.prototype.tick = function (aoDeg, aiDeg, dtMs) {
+  this.acc += dtMs;
+  while (this.acc >= 100) {
+    this.acc -= 100;
+    var o = aoDeg * Math.PI / 180, i = aiDeg * Math.PI / 180;
+    var gx = -Math.sin(o) * Math.sin(i), gy = -Math.cos(o), gz = Math.sin(o) * Math.cos(i);
+    // Bin from the rounded integers like the Arduino does (avoids atan2(0, -0) = π at 0°/0°).
+    var ix = roundAway(gx * 1000), iy = roundAway(gy * 1000), iz = roundAway(gz * 1000);
+    this.sx += ix; this.sy += iy; this.sz += iz; this.n++;
+    var band = Math.min(9, Math.floor((iy / 1000 + 1) / 2 * 10)), sector = Math.min(19, Math.floor((Math.atan2(iz, ix) + Math.PI) / (2 * Math.PI) * 20));
+    var b = band * 20 + sector; if (!this.bins[b]) { this.bins[b] = 1; this.hit++; }
+  }
+};
+GravityEstimate.prototype.gres = function () { return this.n ? Math.sqrt(this.sx * this.sx + this.sy * this.sy + this.sz * this.sz) / (1000 * this.n) : 1; };
+GravityEstimate.prototype.cov = function () { return this.hit / 200; };
+
+function SimMachine() {
+  this.state = "STOPPED"; this.ao = 0; this.ai = 0; this.vo = 0; this.vi = 0; this.to = 0; this.ti = 0;
+  this.hold = 0; this.tMs = 0; this.est = new GravityEstimate(); this.seed = 12345;
+}
+SimMachine.prototype.rand = function () { this.seed = (this.seed * 1103515245 + 12345) & 0x7fffffff; return this.seed / 0x7fffffff; };
+SimMachine.prototype.tick = function (dtMs) {  // random mode, values from rpmcore/config.py
+  var dt = dtMs / 1000, VMIN = 10, VMAX = 60, ACC = 20;
+  if (this.state === "RUNNING") {
+    this.hold -= dtMs;
+    if (this.hold <= 0) {
+      var self = this, pick = function () { return (VMIN + self.rand() * (VMAX - VMIN)) * (self.rand() < 0.5 ? -1 : 1); };
+      this.to = pick(); this.ti = pick(); this.hold = 5000 + this.rand() * 15000;
     }
-    tag(P(platT([0, 0, Z0 + 11])), 0, -0.2 * H, "Sample holder");
-    tag(P(innerT([78.5, 0, Z0 - 20])), 0.13 * W, 0.08 * H, "Turning ring");
-    tag(P([0, 0, -88]), -0.02 * W, 0.1 * H, "Fixed frame");
-    tag(P([-96, 0, 50]), -0.08 * W, -0.12 * H, "Motor");
+  } else { this.to = 0; this.ti = 0; }
+  var ramp = function (v, t) { var d = t - v, m = ACC * dt; return Math.abs(d) <= m ? t : v + (d > 0 ? m : -m); };
+  this.vo = ramp(this.vo, this.to); this.vi = ramp(this.vi, this.ti);
+  this.ao = ((this.ao + this.vo * dt) % 360 + 360) % 360; this.ai = ((this.ai + this.vi * dt) % 360 + 360) % 360;
+  if (this.state === "RUNNING" || this.state === "STOPPING") { this.tMs += dtMs; this.est.tick(this.ao, this.ai, dtMs); }
+  if (this.state === "STOPPING" && this.vo === 0 && this.vi === 0) this.state = "STOPPED";
+};
+SimMachine.prototype.handle = function (cmd) {
+  if (cmd === "start") { if (this.state !== "STOPPED") return "err already running"; this.state = "RUNNING"; this.tMs = 0; this.hold = 0; this.est.start(); return "ok start random"; }
+  if (cmd === "stop") { if (this.state === "RUNNING") this.state = "STOPPING"; return "ok stop"; }
+  if (cmd === "estop") { this.state = "STOPPED"; this.vo = this.vi = 0; return "ok estop"; }
+  if (cmd === "status") {
+    var us = function (v, st) { return st === "STOPPED" ? "off" : String(Math.round(1500 + v * 1.6)); };
+    return "ok state=" + this.state + " mode=random inner_dps=" + this.vi.toFixed(2) + " outer_dps=" + this.vo.toFixed(2) +
+      " inner_us=" + us(this.vi, this.state) + " outer_us=" + us(this.vo, this.state) + " t=" + (this.tMs / 1000).toFixed(3) +
+      " gres=" + this.est.gres().toFixed(3) + " cov=" + this.est.cov().toFixed(3);
   }
+  return "err unknown command: " + cmd;
+};
+function startSim(reason) {
+  var sim = new SimMachine(), TICK = 20, last = performance.now(), debt = 0;
+  setInterval(function () {
+    var now = performance.now(), speed = +$("speed").value;
+    debt += (now - last) * speed; last = now;
+    var steps = 0;
+    while (debt >= TICK && steps < 5000) { sim.tick(TICK); debt -= TICK; steps++; }
+    if (steps >= 5000) debt = 0;
+  }, 50);
+  transport = { kind: "sim", send: function (line) { var r = sim.handle(line); setTimeout(function () { onLine(r); }, 10); } };
+  $("speedWrap").hidden = false;
+  var n = $("notice"); n.hidden = false;
+  n.textContent = reason + " This is a simulated machine for trying the page. To control the real machine, start it with the launcher (start-mac.command or start-windows.bat).";
+  setConn("warn", "Simulated machine", true);
+  log("sys", "Simulated machine started");
+  startPolling(POLL_MS_SIM); send("status");
+}
 
-  /* ---------- main loop ---------- */
-  var last = nowS(), colorAcc = 1;
-  function frame() {
-    var t = nowS(), dt = Math.min(0.1, t - last); last = t;
-    colorAcc += dt; if (colorAcc > 1) { readColors(); colorAcc = 0; }
-    var wo, wi;
-    if (!link) {
-      if (S.st === "run") { S.gain = Math.min(1, S.gain + dt / 2); if (t > S.next) pickTargets(t); }
-      else if (S.st === "slow") { S.gain = Math.max(0, S.gain - dt / 3); if (S.gain === 0) { runFinish(S.pendingHow || "Stopped"); setState("stop"); } }
-      if (S.st !== "stop") { var k = 1 - Math.exp(-dt / 1.5); S.wo += (S.tgo - S.wo) * k; S.wi += (S.tgi - S.wi) * k; }
-      wo = S.st === "stop" ? 0 : S.wo * S.gain; wi = S.st === "stop" ? 0 : S.wi * S.gain;
-    } else { wo = S.dpsO * DEG; wi = S.dpsI * DEG; }
-    S.to += wo * dt; S.ti += wi * dt;
-    SHOW.to += 0.22 * dt; SHOW.ti += 0.35 * dt;
-    $("timer").textContent = S.st === "stop" ? (S.lastDur ? "Last run: " + fmtDur(S.lastDur) : "Ready") : "Running for " + fmtDur(t - S.runStart);
-    if (cur) { var dc = $("dur-" + cur.id); if (dc) dc.textContent = mins(cur).toFixed(0); }
-    if (!$("view-machine").hidden) drawBuild($("showCanvas"), SHOW.to, SHOW.ti, true);
-    $("runSample").textContent = cur ? cur.sid + " · " + cur.sample + " · started " + fTime(cur.start) : "";
-    requestAnimationFrame(frame);
-  }
+// ---------- buttons ----------
+$("btnStart").onclick = function () { send("start"); };
+$("btnStop").onclick = function () { send("stop"); };
+$("btnEstop").onclick = function () { send("estop"); };
+document.addEventListener("keydown", function (e) { if (e.key === "Escape" && connected) { e.preventDefault(); send("estop"); } });
+$("showStatus").onchange = renderLog;
+$("btnClear").onclick = function () { logLines = []; renderLog(); };
+$("btnCsv").onclick = function () {
+  if (!run.samples.length) { log("sys", "Nothing to download yet. Start a run first."); return; }
+  var rows = ["run_id,t_s,avg_gravity_g,orientations_visited,outer_dps,inner_dps"];
+  run.samples.forEach(function (p) {
+    rows.push([run.id, p.t.toFixed(3), p.g == null ? "" : p.g.toFixed(3), p.c == null ? "" : p.c.toFixed(3),
+               p.o == null ? "" : p.o.toFixed(2), p.i == null ? "" : p.i.toFixed(2)].join(","));
+  });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([rows.join("\n") + "\n"], { type: "text/csv" }));
+  a.download = (run.id || "rpm-run") + ".csv"; document.body.appendChild(a); a.click(); a.remove();
+  log("sys", "Downloaded " + a.download);
+};
 
-  /* ---------- boot ---------- */
-  runs = load() || examples();
-  runs.forEach(function (r) { if (r.end == null) { r.end = r.start; r.how = "Page closed"; } });
-  ensureIds(); save();
-  try { if (localStorage.getItem("rpm-hub-expert") === "1") setExpert(true); } catch (e) { }
-  showView(location.hash.slice(1));
-  readColors(); setState("stop"); renderRuns(); updLogCount(); refreshSampleDefault();
-  logLine("practice mode: no machine connected");
-  if (PREVIEW_SIMULATED_MACHINE) {
-    $("sampleInput").value = "Wheat seeds, tray A";
-    useSim(12 * 60 * 1000 + 40 * 1000); // as if the experiment started 12 min 40 s ago
-  }
-  requestAnimationFrame(frame);
-})();
+render(); drawChart();
+connectLauncher();
 </script>
 </body>
 </html>
