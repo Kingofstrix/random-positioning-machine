@@ -271,12 +271,13 @@ def hole_centres(v, guesses, window=3.0):
     """Centres of round holes along X near `guesses` (y, z), by a least-squares circle fit."""
     out = []
     for c in guesses:
+        w = window
         for _ in range(3):
-            q = v[np.hypot(v[:, 1] - c[0], v[:, 2] - c[1]) < window][:, 1:]
+            q = v[np.hypot(v[:, 1] - c[0], v[:, 2] - c[1]) < w][:, 1:]
             A = np.c_[2 * q, np.ones(len(q))]
             sol = np.linalg.lstsq(A, (q**2).sum(1), rcond=None)[0]
             c, r = sol[:2], np.sqrt(sol[2] + sol[:2] @ sol[:2])
-            window = r + 0.3
+            w = r + 0.3                                   # refit on the hole wall only
         assert np.abs(np.hypot(q[:, 0] - c[0], q[:, 1] - c[1]) - r).max() < 0.05   # a clean circle
         out.append(c)
     return np.array(out)
