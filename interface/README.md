@@ -1,102 +1,86 @@
-# Web interface
+# Control page and launcher
 
-One-page control hub for the Random Positioning Machine. Experimenters start and stop a run, note
-their sample and export the results to Excel. Owned by the **Testing** team.
+A minimal page to run the Random Positioning Machine from a laptop: **Start**, **Stop**,
+**Emergency stop**, the average gravity on the sample, an initialization curve and the machine log.
+Owned by the **Testing** team.
 
-Live page (after the first deploy): https://kingofstrix.github.io/random-positioning-machine/
+The machine is an Arduino Nano with a CH340 USB chip. A small launcher on the laptop talks to the
+Arduino over USB and opens the page in a browser window. There is no web version any more.
 
-## Browsers
+## Starting it
 
-| Browser | Works |
+1. Plug the Arduino into the laptop.
+2. Start the launcher:
+   - **macOS:** double-click `start-mac.command`. If macOS blocks it the first time, right-click → Open.
+   - **Windows:** double-click `start-windows.bat`.
+   - **Any system:** `pip install -r requirements.txt`, then `python3 launcher.py`.
+3. The page opens in its own window (Chrome or Edge in app mode, otherwise the default browser).
+
+The first start creates `interface/.venv` and installs `pyserial`, which needs Python 3.9 or newer
+and an internet connection once. After that it works offline.
+
+The launcher finds the Arduino by the CH340's USB ID and reconnects when it is unplugged and plugged
+in again. It waits 2 s after connecting because opening the port restarts the Nano.
+
+Options: `--port /dev/cu.wchusbserial1410` (pick the port by hand), `--baud 115200`,
+`--http-port 8765`, `--no-browser`.
+
+**Windows:** if no port shows up, install the CH340 driver from the chip maker (WCH). Recent macOS
+and Linux versions have it built in.
+
+## The page
+
+| Part | What it shows |
 |---|---|
-| **Chrome or Edge on a desktop or laptop** (version 114 or newer) | Everything, including connecting the machine. **Use one of these.** |
-| Firefox, Safari | Page, practice mode and export work. Connecting a machine does **not** work (no Web Serial). |
-| Phones and tablets | Page and export work. Connecting a machine does not work. |
+| Controls | State, run time, Start, Stop (slows down gently), Emergency stop (also the `Esc` key) |
+| Average gravity | How much gravity the sample has felt on average since Start, in g. Target below 0.05 g. |
+| Orientations visited | Share of 200 directions the sample has been turned through. Target 90 %. |
+| Initialization | "Initializing…" with a rough forecast, then "Ready" once both targets are met |
+| Initialization curve | Both values over time, with the targets as dashed lines and a marker when ready |
+| Log | Every command and reply. Status replies are hidden unless you tick the box. |
 
-Connecting needs the [Web Serial API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Serial_API),
-which only Chromium browsers on desktop support. It also needs a secure page: the GitHub Pages
-address (https) or `localhost`. Opening `index.html` straight from the disk does not allow it.
+**Download run (CSV)** saves the curve of the current run: `run_id, t_s, avg_gravity_g,
+orientations_visited, outer_dps, inner_dps`.
 
-## Using it
+Both gravity values are calculated by the Arduino from the speeds it commands. The servos give no
+feedback, so this is an estimate. The targets come from `docs/PLAN.md` §8.3 and are provisional.
 
-1. Plug the machine into the computer with USB and open the live page in Chrome or Edge.
-2. Press **Connect machine** and pick the machine's port in the browser's list.
-3. Type the sample name (or keep the prefilled ID), press **Start turning**.
-4. Press **Stop gently** when done. **Emergency stop** (or the Esc key) switches the motors off at once.
-5. **Export for Excel**: *Copy table* and paste into Excel, or *Download file* (CSV). Choose German
-   or English Excel so separators and decimal commas come out right.
-
-Without a machine the page runs in **practice mode**: the buttons work and runs are recorded as
-"practice". If connecting fails, the page offers a **simulated machine** for demos.
-
-Help for newcomers sits behind the **?** buttons and on the tab **The machine**.
-
-### Expert mode
-
-The switch in the top bar adds, on the same page:
-
-- live values from the machine (state, ring speeds, machine time, log size),
-- the machine messages (every command and reply), a command field and the baud rate,
-- a **Mode** column in the results (practice, simulated, machine),
-- a **machine log** export: one row per second with the ring speeds and motor signals the machine
-  was told to run. These are commanded values, not measurements (the servos give no feedback and
-  there are no sensors yet).
-
-## Data
-
-- Results are saved in the browser's local storage on this computer only. Clearing browser data
-  deletes them, and another computer does not see them. Export after each experiment.
-- The machine log is kept in memory for the latest run and is lost when the page closes.
-- CSV files are UTF-8 with BOM. German: `;` and decimal comma. English: `,` and decimal point.
-
-Every run gets an ID `RPM-YYMMDD-NN` (NN counts the runs of that day). The sample name is prefilled
-with the ID and falls back to it when left empty, so no run is ever without a name.
-
-Results columns: `Date, ID, Start, End, Duration (minutes), How it ended, Sample, Notes` (+ `Mode` in
-expert mode). Machine log columns: `Date, Time, Seconds since start, State, Outer ring speed (°/s,
-commanded), Inner ring speed (°/s, commanded), Outer motor signal (µs), Inner motor signal (µs), ID, Sample`.
+Without the launcher (for example when you open `index.html` straight from the disk), the page runs a
+**simulated machine** with the same commands and the same gravity calculation, so you can try it
+without hardware. You can speed the simulation up to 60×.
 
 ## How it talks to the machine
 
-USB serial, one text line per command, replies start with `ok` or `err` (see `docs/interfaces.md`).
-The page uses only these commands from the simulation team's `rpmcore/commands.py`:
+USB serial at 115200 baud, one text line per command. Replies start with `ok` or `err`
+(see `docs/interfaces.md`).
 
 | Command | When |
 |---|---|
-| `start` | Start turning |
-| `stop` | Stop gently |
-| `estop` | Emergency stop |
+| `start` | Start |
+| `stop` | Stop |
+| `estop` | Emergency stop or `Esc` |
 | `status` | Every 0.5 s while connected |
 
-From the `status` reply it reads `state` (`RUNNING`, `STOPPING`, `STOPPED`), `inner_dps`,
-`outer_dps`, `inner_us`, `outer_us` and `t` (seconds). If the firmware changes this format, the
-page has to change too.
+From the `status` reply the page reads `state`, `t`, `outer_dps`, `inner_dps`, `gres` and `cov`.
+Unknown fields are ignored. If `gres` and `cov` are missing, the page still works and says that the
+firmware does not report gravity yet. How the Arduino calculates them, with reference code and test
+values: `testing/gravity-estimate/`.
 
-## Not decided yet
+Between the page and the launcher (127.0.0.1 only):
 
-- **Baud rate.** The page defaults to 115200 and lets experts pick another. It must match the Nano firmware.
-- **Nano firmware.** The Arduino Nano script that answers these commands is not written yet.
-- **Moon and Mars gravity.** Shown as "later"; needs a motion strategy from the simulation team.
-- **Measurements.** No sensors yet. Columns will be added once the teams decide what to measure.
-- **Build details** on the tab *The machine* stay "Not decided yet" until the hardware team fills them in.
+| Route | Purpose |
+|---|---|
+| `GET /` | the page |
+| `GET /events` | Server-Sent Events: `port` (`{"connected": …, "port": …}`) and `line` (one serial line) |
+| `POST /cmd` | one command line as text; 503 when no Arduino is connected |
 
 ## Developing
 
-It is a single static file, `index.html`, with no build step and no dependencies apart from Google Fonts.
+`index.html` is a single file with no build step and no external resources. Launcher tests:
 
 ```sh
 cd interface
-python3 -m http.server 8000   # then open http://localhost:8000 in Chrome
+python3 -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt pytest
+pytest tests
 ```
-
-For a demo without hardware, set `PREVIEW_SIMULATED_MACHINE = true` near the top of the script.
-Keep it `false` in the committed file.
-
-Pushing to `main` with changes under `interface/` deploys the page through
-`.github/workflows/pages.yml`.
-
-## Licence
-
-The machine drawing is based on the Random Positioning Machine by Core Electronics and
-Unconvengineering (CC BY-NC-SA 4.0), modified by Mark Schutera, DHBW Ravensburg. See
-`rpm_printables/README.txt`.
