@@ -227,7 +227,7 @@ def test_stop_and_estop_end_cal(c):
     "key, value",
     [
         ("v_min", 0), ("v_min", -5), ("v_min", 100),       # 100 > v_max 90
-        ("v_max", 5),                                     # below v_min 10
+        ("v_max", 5),                                     # below v_min 30
         ("v_max", 126),                                   # beyond servo range
         ("accel", 0), ("accel", float("nan")), ("accel", float("inf")),
         ("hold_min", 0), ("hold_min", 30),                # 30 > hold_max 20

@@ -180,3 +180,9 @@ def test_extra_accel_with_offset_payload(tmp_path):
     assert np.isfinite(mx) and np.isfinite(rms)
     # Not a threshold, only proof that the offset reached the model (about 1.6e-3 g measured).
     assert mx > 1e-4 and 0.0 < rms <= mx
+
+
+def test_cli_runs_the_configured_default_mode(tmp_path):
+    # sim.run and sim.viewer must start the same mode as the device does after power-up.
+    main(["--minutes", "0.02", "--seed", "1", "--out", str(tmp_path)])
+    assert (tmp_path / ("%s_s1.npz" % CONFIG["default_mode"])).exists()

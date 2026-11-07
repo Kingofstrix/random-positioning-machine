@@ -223,11 +223,11 @@ CONFIG = {
     "tick_ms": 20,
     "gear_ratio": 4.0,
     "autostart": True,
-    "default_mode": "random",
+    "default_mode": "clino3d",   # 0 g: schnellster und robustester Modus (Sim, siehe 7)
     "seed": 1,
-    "accel_dps2": 20.0,          # Rampe für Rahmen-Drehzahl [Annahme]
-    "random": {"v_min_dps": 10.0, "v_max_dps": 60.0, "hold_min_s": 5.0, "hold_max_s": 20.0},
-    "clino3d": {"outer_dps": 30.0, "inner_dps": 18.54},   # Verhältnis ≈ Goldener Schnitt
+    "accel_dps2": 60.0,          # Rampe für Rahmen-Drehzahl [Annahme]
+    "random": {"v_min_dps": 30.0, "v_max_dps": 90.0, "hold_min_s": 5.0, "hold_max_s": 20.0},
+    "clino3d": {"outer_dps": 80.0, "inner_dps": 30.56},   # Verhältnis 1/φ² = 0,382, ~25 % Reserve zum Servo-Max
     "clino2d": {"outer_dps": 30.0},
     "servo": {
         "outer": {"neutral_us": 1500, "min_us": 700, "max_us": 2300,
@@ -423,8 +423,13 @@ Zusatzbeschleunigung. Optional `--video`: Offscreen-Render 20 s mit 4× Zeitraff
 
 | Modus | Erwartung | Zweck |
 |---|---|---|
-| `random` | Rest-g fällt mit der Zeit, Kugel gut abgedeckt | Hauptmodus RPM |
-| `clino3d` | Rest-g fällt, aber Abdeckung mit Mustern | deterministische Referenz |
+| `clino3d` (80 / 30,56 °/s) | Rest-g fällt schnell (Sim 10 min: 0,001 g gesamt, 0,019 g Median über 60-s-Fenster), Abdeckung mit Muster; robust gegen ±20 % / ±15 µs Fehlkalibrierung pro Achse | **Standardmodus für 0 g** |
+| `random` (30–90 °/s) | Rest-g fällt nur wie ein Zufallsweg (~t^-0,44, Sim: ~0,12 g über 60-s-Fenster), Kugel gut abgedeckt | wenn ein zufälliger Bewegungsablauf verlangt ist |
+
+Messgrundlage (Sim, 2026-11-07): Das alte `random` (10–60 °/s) ließ 0,19 g über 60-s-Fenster,
+weil fast die Hälfte der Haltephasen vor einer vollen Umdrehung endet. Das alte `clino3d`
+(30 / 18,54, Verhältnis 0,618) rastet bei Fehlkalibrierung innerhalb ±10 % / ±8 µs auf 1:1 ein und
+behält dann 0,26 g; mit 0,382 bleibt das Drehzahlverhältnis im ganzen Fehlerbereich unter 0,75.
 | `clino2d` | Nur die waagerechte outer-Achse dreht → g kreist in einer Ebene der Probe: Mittel → 0, aber nur ein Großkreis der Kugel abgedeckt | Vergleich 2D-Klinostat |
 | nur inner dreht, outer bei 0° | inner-Achse senkrecht → **Rest-g bleibt 1 g** | Plausibilitätstest der Geometrie |
 
@@ -479,8 +484,12 @@ Zusatzbeschleunigung. Optional `--video`: Offscreen-Render 20 s mit 4× Zeitraff
 - **Determinismus**: zweimal gleicher Seed → identische Logs.
 - **Tracking**: im random-Modus RMS-Fehler Soll/Ist < 10 °/s (nach Kalibrierungsabgleich
   Sim = Firmware) [Schwelle nach dem ersten Lauf festzurren].
-- **slow – Mikrogravitation**: random, 30 min, Seed 1–3 → Rest-g < 0,05 g und
-  Kugelabdeckung > 90 % der Bins. **Startwerte, nach dem ersten echten Lauf mit gemessenem
+- **slow – Mikrogravitation**: random, 30 min, Seed 1–3 → Rest-g < 0,07 g (Start 0,05;
+  gemessen 0,043 / 0,054 / 0,047) und Kugelabdeckung > 90 % der Bins.
+- **Robustheit gegen Fehlkalibrierung** (`tests/sim/test_robustness.py`): jede Achse mit eigenem
+  „echtem“ Servo (±20 % Drehzahl, ±15 µs Neutralpunkt), Firmware-Tabelle nominal. clino3d:
+  Drehzahlverhältnis über das ganze Raster < 0,75; slow, alle 4 Ecken, 10 min → Rest-g < 0,01 g und
+  Median über 60-s-Fenster < 0,08 g. **Startwerte, nach dem ersten echten Lauf mit gemessenem
   Wert + Sicherheitsmarge festschreiben** (einziger Fall, in dem eine Schwelle angepasst werden
   darf, Begründung im Commit).
 - **Sensorkonvention**: Payload-Offset 0 → |acc + g_s| < 0,001 g (die Probe sitzt im festen
