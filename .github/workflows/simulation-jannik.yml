@@ -21,7 +21,26 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy
-      - run: uv run pytest
+      - run: uv run pytest   # includes the Nano C++ tests (g++ is on the runner)
+
+  nano:
+    # The Arduino sketch must build for the Nano and fit its 2 KB RAM; also with a
+    # generated calibration.h. Pinned versions, like the MicroPython job.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.5.1"  # same as tested locally
+      - run: |
+          arduino-cli core update-index
+          arduino-cli core install arduino:avr@1.8.8
+          arduino-cli lib install Servo@1.3.0
+      - run: uv sync --locked
+      - run: uv run pytest tests/test_nano_core.py -v
+      - name: Fail if the size check was skipped
+        run: uv run pytest tests/test_nano_core.py -q -k "fits or calibration" -rs | grep -q "3 passed"
 
   micropython:
     # rpm/core and firmware/ must run on the Pico's interpreter, not only on CPython.
