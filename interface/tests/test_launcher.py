@@ -162,3 +162,93 @@ def test_events_stream_port_then_lines(setup):
     setup.ports.append(port("/dev/fake", 0x1A86))
     assert json.loads(read_event(resp)[1])["connected"] is True
     conn.close()
+
+
+# --- forwarding to the simulation (sim.hil) --------------------------------------------
+
+class RecordingForwarder:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, direction, line):
+        self.sent.append((direction, line))
+
+
+def test_is_telemetry():
+    assert launcher.is_telemetry("T 20 1454 1454 RUNNING")
+    assert launcher.is_telemetry("C start clino3d")
+    assert launcher.is_telemetry("C!")
+    assert not launcher.is_telemetry("ok state=RUNNING mode=random")
+    assert not launcher.is_telemetry("err unknown command: Cx (try help)")
+
+
+def test_forward_copies_both_directions_and_hides_telemetry_from_page():
+    fake = FakeSerial()
+    fwd = RecordingForwarder()
+    bridge = launcher.Bridge(opener=lambda d, b: fake, lister=lambda: [port("/dev/fake", 0x1A86)],
+                             reset_wait=0, sleep=lambda s: None, forwarder=fwd)
+    page = bridge.subscribe()
+    assert bridge.try_connect()
+    assert bridge.write("  start \n")
+    for raw in (b"C start\r\n", b"ok state=RUNNING mode=random\r\n", b"T 20 1546 1454 RUNNING\r\n"):
+        fake.incoming.put(raw)
+        bridge.read_once()
+    assert fwd.sent == [("tx", "start"), ("rx", "C start"), ("rx", "ok state=RUNNING mode=random"),
+                        ("rx", "T 20 1546 1454 RUNNING")]
+    shown = []
+    while not page.empty():
+        shown.append(page.get_nowait())
+    assert ("line", "ok state=RUNNING mode=random") in shown
+    assert not any(e == "line" and launcher.is_telemetry(d) for e, d in shown)
+
+
+def test_forward_keeps_boot_lines_for_sim_only():
+    # Without forwarding the bootloader noise is thrown away; sim.hil needs the boot banner.
+    fake = FakeSerial()
+    for raw in (b"\x00\xff\r\n", b"ok rpm_nano ready (send help) telemetry\r\n", b"T 20 1454 1454 RUNNING\r\n"):
+        fake.incoming.put(raw)
+    fwd = RecordingForwarder()
+    bridge = launcher.Bridge(opener=lambda d, b: fake, lister=lambda: [port("/dev/fake", 0x1A86)],
+                             reset_wait=0.3, forwarder=fwd)
+    page = bridge.subscribe()
+    page.get_nowait()  # initial port state
+    assert bridge.try_connect()
+    lines = [l for d, l in fwd.sent if d == "rx"]
+    assert lines[1:] == ["ok rpm_nano ready (send help) telemetry", "T 20 1454 1454 RUNNING"]
+    events = []
+    while not page.empty():
+        events.append(page.get_nowait()[0])
+    assert events == ["port"]  # the page saw the connection, none of the boot lines
+
+
+def test_sim_forwarder_waits_for_sim_hil_and_delivers_in_order():
+    import socket
+
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    addr = "127.0.0.1:%d" % srv.getsockname()[1]
+    fwd = launcher.SimForwarder(addr, retry=0.05)
+    fwd.start()
+    # sim.hil is not listening yet: sending must not block, lines wait in the queue.
+    fwd.send("rx", "ok rpm_nano ready (send help) telemetry")
+    fwd.send("tx", "status")
+    srv.listen(1)
+    conn, _ = srv.accept()
+    conn.settimeout(3)
+    fwd.send("rx", "C status")
+    data = b""
+    while data.count(b"\n") < 3:
+        data += conn.recv(4096)
+    fwd.stop()
+    conn.close()
+    srv.close()
+    msgs = [json.loads(l) for l in data.decode().splitlines()]
+    assert msgs == [{"dir": "rx", "line": "ok rpm_nano ready (send help) telemetry"},
+                    {"dir": "tx", "line": "status"}, {"dir": "rx", "line": "C status"}]
+
+
+def test_sim_forwarder_drops_instead_of_blocking_when_full():
+    fwd = launcher.SimForwarder("127.0.0.1:9", maxsize=2)  # never started, never drains
+    for i in range(5):
+        fwd.send("rx", str(i))
+    assert fwd.dropped == 3

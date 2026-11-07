@@ -8,6 +8,9 @@ over plain HTTP on 127.0.0.1:
     GET  /events  -> Server-Sent Events: `port` (connection state) and `line` (raw serial lines)
     POST /cmd     -> one command line, written to serial with "\\n" (503 without a port)
 
+With --forward it also copies every serial line, both directions, to the simulation's
+hardware-in-the-loop checker (`python -m sim.hil` in simulation/) on 127.0.0.1:8766.
+
 Only the standard library and pyserial are used so the start scripts stay trivial.
 """
 
@@ -16,6 +19,7 @@ import json
 import os
 import queue
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -33,6 +37,81 @@ RETRY_S = 1.0
 # about 1-2 s and swallows anything we send, so we wait before reporting "connected".
 RESET_WAIT_S = 2.0
 INDEX_HTML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
+# sim.hil listens here (not 8765: that is this launcher's own HTTP port).
+SIM_ADDRESS = "127.0.0.1:8766"
+SIM_RETRY_S = 3.0
+# Lines kept while sim.hil is not reachable yet: ~6 min of telemetry at 50 lines/s.
+SIM_QUEUE_MAX = 20000
+
+
+def is_telemetry(line):
+    """Lines of the Nano's telemetry test build: `T ...` per tick, `C ...` per command.
+
+    They are meant for sim.hil only; the page would drown in 50 lines per second.
+    """
+    s = line.strip()
+    return s.startswith(("T ", "C ")) or s == "C!"
+
+
+class SimForwarder:
+    """Copies serial traffic to sim.hil: one JSON line {"dir": "rx"|"tx", "line": ...} per
+    serial line over a local TCP connection.
+
+    Never blocks the serial loop. Lines wait in a bounded queue until sim.hil is reachable, so
+    the launcher may start first; it reconnects every few seconds if sim.hil goes away.
+    """
+
+    def __init__(self, address=SIM_ADDRESS, connect=socket.create_connection, retry=SIM_RETRY_S,
+                 maxsize=SIM_QUEUE_MAX):
+        host, _, port = address.rpartition(":")
+        self.address = (host or "127.0.0.1", int(port))
+        self.connect = connect
+        self.retry = retry
+        self.q = queue.Queue(maxsize=maxsize)
+        self.dropped = 0
+        self.connected = False
+        self.stop_event = threading.Event()
+
+    def send(self, direction, line):
+        try:
+            self.q.put_nowait(json.dumps({"dir": direction, "line": line}) + "\n")
+        except queue.Full:
+            self.dropped += 1
+
+    def run(self):
+        sock = None
+        item = None
+        while not self.stop_event.is_set():
+            if sock is None:
+                try:
+                    sock = self.connect(self.address, timeout=2)
+                    self.connected = True
+                    print("forwarding to sim.hil at %s:%d" % self.address, flush=True)
+                except OSError:
+                    self.stop_event.wait(self.retry)
+                    continue
+            if item is None:
+                try:
+                    item = self.q.get(timeout=0.5)
+                except queue.Empty:
+                    continue
+            try:
+                sock.sendall(item.encode("utf-8"))
+                item = None
+            except OSError:
+                # Keep the line and resend it after reconnecting.
+                sock, self.connected = None, False
+                print("sim.hil went away, retrying every %g s" % self.retry, flush=True)
+        if sock is not None:
+            sock.close()
+
+    def start(self):
+        t = threading.Thread(target=self.run, name="sim-forward", daemon=True)
+        t.start()
+        return t
+
+    def stop(self):
+        self.stop_event.set()
 
 
 def list_ports():
@@ -65,7 +144,9 @@ class Bridge:
     """
 
     def __init__(self, baud=DEFAULT_BAUD, port_override=None, opener=open_serial,
-                 lister=list_ports, reset_wait=RESET_WAIT_S, retry=RETRY_S, sleep=time.sleep):
+                 lister=list_ports, reset_wait=RESET_WAIT_S, retry=RETRY_S, sleep=time.sleep,
+                 forwarder=None):
+        self.forwarder = forwarder  # SimForwarder or None
         self.baud = baud
         self.port_override = port_override
         self.opener = opener
@@ -111,10 +192,12 @@ class Bridge:
         try:
             with self.write_lock:
                 ser.write((line.strip() + "\n").encode("utf-8"))
-            return True
         except Exception:
             self._drop()
             return False
+        if self.forwarder:
+            self.forwarder.send("tx", line.strip())
+        return True
 
     def _drop(self):
         ser, self.serial, self.device = self.serial, None, None
@@ -137,14 +220,30 @@ class Bridge:
             ser = self.opener(device, self.baud)
         except Exception:
             return False
-        self.sleep(self.reset_wait)  # Nano reset via DTR, see RESET_WAIT_S
-        try:
-            ser.reset_input_buffer()  # drop bootloader noise
-        except Exception:
-            pass
+        if self.forwarder:
+            # sim.hil checks the Nano from its boot on, so the boot banner and first ticks must
+            # not be thrown away: they go to sim.hil only, the page still starts clean.
+            self._boot_to_sim(ser)
+        else:
+            self.sleep(self.reset_wait)  # Nano reset via DTR, see RESET_WAIT_S
+            try:
+                ser.reset_input_buffer()  # drop bootloader noise
+            except Exception:
+                pass
         self.serial, self.device = ser, device
         self.broadcast("port", self.port_payload())
         return True
+
+    def _boot_to_sim(self, ser):
+        """Spend the reset wait reading, and hand what the Nano says to sim.hil only."""
+        deadline = time.monotonic() + self.reset_wait
+        while time.monotonic() < deadline:
+            try:
+                raw = ser.readline()
+            except Exception:
+                return
+            if raw:
+                self.forwarder.send("rx", raw.decode("utf-8", errors="replace").rstrip("\r\n"))
 
     def read_once(self):
         """Read one line (or time out) and broadcast it; drops the port on I/O errors."""
@@ -155,7 +254,10 @@ class Bridge:
             return
         if raw:
             line = raw.decode("utf-8", errors="replace").rstrip("\r\n")
-            self.broadcast("line", line)
+            if self.forwarder:
+                self.forwarder.send("rx", line)
+            if not is_telemetry(line):
+                self.broadcast("line", line)
 
     def run(self):
         """Background loop: connect, read, and reconnect every second after unplugging."""
@@ -289,9 +391,16 @@ def main(argv=None):
     ap.add_argument("--baud", type=int, default=DEFAULT_BAUD)
     ap.add_argument("--http-port", type=int, default=DEFAULT_HTTP_PORT)
     ap.add_argument("--no-browser", action="store_true", help="do not open a browser window")
+    ap.add_argument("--forward", nargs="?", const=SIM_ADDRESS, metavar="HOST:PORT",
+                    help="copy all serial lines to the simulation's checker, python -m sim.hil "
+                         "(default %s)" % SIM_ADDRESS)
     args = ap.parse_args(argv)
 
-    bridge = Bridge(baud=args.baud, port_override=args.port)
+    forwarder = SimForwarder(args.forward) if args.forward else None
+    if forwarder:
+        forwarder.start()
+        print("forwarding serial lines to sim.hil at %s once it runs" % args.forward, flush=True)
+    bridge = Bridge(baud=args.baud, port_override=args.port, forwarder=forwarder)
     server = make_server(bridge, args.http_port)
     url = "http://%s:%d/" % (HOST, server.server_address[1])
     bridge.start()
@@ -304,6 +413,8 @@ def main(argv=None):
         print("\nbye")
     finally:
         bridge.stop()
+        if forwarder:
+            forwarder.stop()
         server.server_close()
     return 0
 

@@ -23,7 +23,8 @@ The launcher finds the Arduino by the CH340's USB ID and reconnects when it is u
 in again. It waits 2 s after connecting because opening the port restarts the Nano.
 
 Options: `--port /dev/cu.wchusbserial1410` (pick the port by hand), `--baud 115200`,
-`--http-port 8765`, `--no-browser`.
+`--http-port 8765`, `--no-browser`, `--forward` (copy the serial traffic to the simulation, see
+below).
 
 **Windows:** if no port shows up, install the CH340 driver from the chip maker (WCH). Recent macOS
 and Linux versions have it built in.
@@ -73,6 +74,25 @@ Between the page and the launcher (127.0.0.1 only):
 | `GET /` | the page |
 | `GET /events` | Server-Sent Events: `port` (`{"connected": …, "port": …}`) and `line` (one serial line) |
 | `POST /cmd` | one command line as text; 503 when no Arduino is connected |
+
+## Check the Arduino against the simulation (hardware in the loop)
+
+`python3 launcher.py --forward` copies every line the launcher sends to and receives from the
+Arduino to the simulation's checker, `python -m sim.hil` (in `simulation/`), on `127.0.0.1:8766`.
+It uses one JSON line per serial line over a local TCP connection. While you use the page as
+usual, `sim.hil` drives the 3D simulation with the Arduino's real motor signals and replays
+everything through the simulation team's logic (rpmcore). At the end it writes a report of every
+difference for the simulation team.
+
+1. Flash the Arduino's **telemetry build** (see `simulation/arduino/README.md`). It also reports
+   every tick (`T …`) and every command it processed (`C …`).
+2. Start `python -m sim.hil` in `simulation/` (macOS with the 3D window: `mjpython -m sim.hil`).
+3. Start the launcher with `--forward`, then use the page. End `sim.hil` with Ctrl-C to get the report.
+
+With `--forward` the launcher keeps the Arduino's boot output for `sim.hil` (which checks from the
+boot on) instead of discarding it. The page still starts clean. Telemetry lines never reach the
+page, with or without `--forward`. If `sim.hil` is not running yet, the lines wait (up to about
+6 min) and are sent once it starts. The launcher keeps working either way.
 
 ## Developing
 
