@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rpm-sim"
+version = "0.1.0"
+description = "Random Positioning Machine: Pico firmware logic and MuJoCo simulation"
+requires-python = ">=3.11"
+dependencies = [
+    # 4.0.0 is published as sdist only; the 3.x line ships wheels (3.17 up to CPython 3.14).
+    "mujoco>=3.2,<4",
+    "numpy",
+    "matplotlib",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+video = ["imageio[ffmpeg]"]
+
+[tool.setuptools]
+# rpmcore lives in firmware/ because that folder is copied 1:1 onto the Pico.
+packages = ["rpmcore", "sim"]
+
+[tool.setuptools.package-dir]
+rpmcore = "firmware/rpmcore"
+sim = "sim"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers"
+markers = ["slow: long simulation runs, skipped with -m 'not slow'"]

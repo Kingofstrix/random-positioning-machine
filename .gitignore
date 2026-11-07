@@ -1,7 +1,10 @@
-# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
 .venv/
+.pytest_cache/
+build/
+dist/
 
-# macOS
-.DS_Store
+# Simulation output (npz logs, plots, videos)
+simulation/results/
