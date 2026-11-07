@@ -1,6 +1,6 @@
 # Random Positioning Machine (RPM)
 
-A 3D-printed **Random Positioning Machine**: a two-axis gimbal that continuously reorients a sample along random paths so that the gravity vector averages out over time. This approximates microgravity (a *clinostat*-style device) for biology experiments such as plant growth or cell cultures.
+A 3D-printed **Random Positioning Machine**: a two-axis gimbal that continuously reorients a sample along random paths so that the gravity vector averages out over time. This approximates microgravity (a *clinostat*-style device). No concrete experiment is planned yet.
 
 Course project *Disciplined Vibe Coding*, DHBW Ravensburg.
 
@@ -53,7 +53,7 @@ Build with the [assembly instructions](rpm_printables/Assembly%20Instructions%20
 
 ## Software
 
-Planned stack: **C++ / Arduino** on the Raspberry Pi Pico, plus a **simulation** of the motion algorithm so it can be developed and checked without hardware. Control code of the original project: [CE-Random-Positioning-Machine](https://github.com/CoreElectronics/CE-Random-Positioning-Machine).
+Planned stack: **C++ / Arduino** on the Raspberry Pi Pico, plus a **simulation** of the motion algorithm so it can be developed and checked without hardware. The control code is written from scratch by this team; it does not reuse the code of the original [CE-Random-Positioning-Machine](https://github.com/CoreElectronics/CE-Random-Positioning-Machine) project.
 
 *Status: not implemented yet.*
 
