@@ -57,7 +57,8 @@ def build_mjcf(p: MachineParams) -> str:
     return f"""
 <mujoco model="rpm">
   <compiler angle="degree" eulerseq="xyz"/>
-  <option timestep="{p.timestep}" integrator="implicitfast" gravity="0 0 -9.81"/>
+  <option timestep="{p.timestep}" integrator="implicitfast" gravity="0 0 -9.81"
+          noslip_iterations="{p.noslip_iterations}"/>
   <default>
     <geom contype="0" conaffinity="0" density="{p.density}" rgba="0.85 0.85 0.8 1"/>
     <joint damping="{p.damping}" solreffriction="{p.friction_solref} 1"/>

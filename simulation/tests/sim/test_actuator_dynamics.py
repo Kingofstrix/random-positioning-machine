@@ -1,3 +1,6 @@
+import math
+
+import mujoco
 import numpy as np
 import pytest
 
@@ -26,6 +29,24 @@ def test_stalled_joint_gives_stall_torque():
     s = m.state()
     assert abs(s["w_outer"]) < 1e-3
     assert s["tau_outer"] == pytest.approx(p.servo_stall_torque, rel=0.02)
+
+
+def set_pose(m, q_outer=0.0, q_inner=0.0):
+    """Put both frames at an angle (rad), with the pinions where the gear equality wants them."""
+    mdl, d = m.model, m.data
+    for name, q in (("outer", q_outer), ("inner", q_inner)):
+        d.qpos[mdl.jnt_qposadr[mdl.joint(name).id]] = q
+        d.qpos[mdl.jnt_qposadr[mdl.joint(name + "_pinion").id]] = -m.params.gear_ratio * q
+    mujoco.mj_forward(mdl, d)
+
+
+@pytest.mark.parametrize("pulse", [None, 1500])
+def test_tilted_frame_holds_with_pwm_off(m, pulse):
+    # PLAN 6.2: frictionloss holds the frame at standstill. At 90 deg the gravity torque about
+    # the outer axis is largest but still below frictionloss_outer, so the frame must not creep.
+    set_pose(m, q_outer=math.pi / 2)
+    m.step(pulse, pulse, duration=60.0)
+    assert abs(math.degrees(m.state()["q_outer"]) - 90.0) < 0.1
 
 
 def test_deadband_pulse_does_not_move(m):
